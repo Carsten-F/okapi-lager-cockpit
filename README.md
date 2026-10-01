@@ -106,6 +106,41 @@ ca. 17:35 Uhr Berlin; Cron-Zeile ergänzen, ohne bestehende Einträge zu übersc
 
 Alternativ löst ein Admin den Sync im Interface aus (`lager_sync_now`).
 
+## Backup
+
+`okapi_stock.stock_history` enthält die Tageshistorie und ist aus Magento **nicht nachladbar**
+(Magento liefert nur den aktuellen Bestand). Deshalb sichert `scripts/backup_lager.sh` täglich
+die Schemas `lager` und `okapi_stock` per `pg_dump` (Custom-Format), prüft den Dump mit
+`pg_restore --list`, behält 30 Tage und schreibt nur Dateien `lager_*.dump`.
+Platzbedarf: wenige MB pro Jahr.
+
+Einrichten (einmalig, PowerShell im Repo-Ordner, vorher `git pull`):
+
+```powershell
+ssh root@server7.centaurus.info "mkdir -p /opt/lager-cockpit /opt/backups/lager && chmod 700 /opt/backups/lager"
+scp scripts\backup_lager.sh root@server7.centaurus.info:/opt/lager-cockpit/
+ssh root@server7.centaurus.info "chmod 700 /opt/lager-cockpit/backup_lager.sh && /opt/lager-cockpit/backup_lager.sh"
+```
+
+Die letzte Zeile macht gleich einen Testlauf; sie muss mit `OK:` enden. Dann Cron ergänzen
+(ohne bestehende Einträge zu überschreiben; 03:30 Berlin, unabhängig vom Magento-Sync):
+
+```bash
+( crontab -l 2>/dev/null; echo 'CRON_TZ=Europe/Berlin'; echo '30 3 * * * /opt/lager-cockpit/backup_lager.sh >> /var/log/lager-backup.log 2>&1' ) | crontab -
+```
+
+Kontrolle am nächsten Morgen: `ssh root@server7.centaurus.info "tail -3 /var/log/lager-backup.log; ls -la /opt/backups/lager"`.
+
+Wiederherstellung (immer in dieselbe Instanz, weil `lager` auf `auth.users` verweist; vorher
+Rücksprache, der Befehl ersetzt die Objekte):
+
+```bash
+docker exec -i supabase-db pg_restore -U postgres -d postgres --clean --if-exists -n lager -n okapi_stock < /opt/backups/lager/lager_DATUM.dump
+```
+
+Die Sicherung liegt auf derselben Platte wie die Datenbank und schützt damit vor Bedienfehlern,
+nicht vor einem Plattenausfall. Eine Kopie auf ein anderes System ist noch offen.
+
 ## Tests
 
 `tests/stub.sql` baut die relevanten Teile der Instanz nach, `tests/smoke.sql` prüft Rechte,
@@ -114,6 +149,6 @@ Rollen, Prognose und Sync. Lokal gegen ein leeres Postgres ≥ 15 ausführen:
 
 ## Offen
 
-- Sicherung der Datenbank (auf der Instanz gibt es aktuell keine).
+- Sicherungskopie außerhalb des Servers (siehe Backup).
 - Kennzeichnung extern/intern (ONYX) je Produkt: Spalte `sku_settings.supply_source` ist bereit.
 - Frontend (Login, Tagesauswertung, Prognose, Bestell- und Wareneingangsformulare).

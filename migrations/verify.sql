@@ -20,6 +20,12 @@ select p.proname, p.prosecdef as security_definer, p.proconfig as config,
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'okapi_stock' and p.proname like 'lager\_%' order by 1;
 
+\echo === Arbeitskopie: Zeilen, Zeitraum, SKUs vs. Quelle ===
+select (select count(*) from lager.stock_daily) as kopie_zeilen,
+       (select count(*) from okapi_stock.stock_history) as quelle_zeilen,
+       (select min(date) from lager.stock_daily) as von, (select max(date) from lager.stock_daily) as bis,
+       (select count(distinct sku) from lager.stock_daily) as skus;
+
 \echo === stock_history unveraendert: Policies und Grants ===
 select policyname, cmd from pg_policies where tablename = 'stock_history' order by 1;
 select grantee, privilege_type from information_schema.role_table_grants

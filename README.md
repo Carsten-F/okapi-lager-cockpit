@@ -1,64 +1,119 @@
 # OKAPI Lager-Cockpit
 
-HTML-Interface mit Login für tägliche Lagerauswertung, Reichweitenprognose und
-Erfassung erwarteter Bestellungen. Datenquelle: `okapi_stock.stock_history` auf der
-selbstgehosteten Supabase-Instanz `https://supabase.okapi-online.de`.
+HTML-Interface mit Login für Lagerverwaltung, Reichweitenprognose und Einkaufsoptimierung
+auf der selbstgehosteten Supabase-Instanz `https://supabase.okapi-online.de`.
 
-## Architektur
+## Datenfluss
 
-- **Daten:** `okapi_stock.stock_history` (ein Eintrag je SKU und Tag, vom Magento-Sync
-  geschrieben). Wird von diesem Projekt nur gelesen.
-- **Eigene Tabellen** im nicht exponierten Schema `lager`: `user_roles`, `sku_settings`,
-  `expected_orders`. Kein direkter Clientzugriff (RLS mit Verweigerungs-Policy, keine Grants).
-- **API:** `SECURITY DEFINER`-Funktionen `okapi_stock.lager_*`, nur für `authenticated`
-  ausführbar und zusätzlich über `lager.user_roles` rollengeprüft. Das Schema `okapi_stock`
-  ist bereits in `PGRST_DB_SCHEMAS` – dieses Projekt ändert die Instanzkonfiguration nicht.
-- **Frontend:** statisches HTML, Supabase Auth (Login), nur `ANON_KEY`. Der
-  `SERVICE_ROLE_KEY` kommt nie in den Browser.
+```
+Magento --(täglicher Import)--> okapi_stock.stock_history   Quelle, wird nie verändert
+                                     |  lager.sync_from_magento()
+                                     v
+                                lager.stock_daily           Arbeitskopie
+Eingaben im Interface: lager.purchase_orders, lager.sku_notes, lager.sku_settings
+(überschreiben die Kopie nie; Korrekturen werden in der Prognose herausgerechnet)
+```
 
-Rollen: `viewer` (lesen), `orderer` (+ Bestellungen erfassen), `admin` (+ SKU-Einstellungen).
+Bestandsgrößen: `effective_stock` = physischer Bestand (Grundlage der Prognose),
+`bestellbar` = `stock_qty − stock_offset` (nur Anzeige).
 
-| Funktion | Rolle |
+## Sicherheit
+
+- Tabellen im nicht exponierten Schema `lager`, RLS mit Verweigerungs-Policy, keine Grants.
+- Zugriff nur über `SECURITY DEFINER`-Funktionen `okapi_stock.lager_*` (nur `authenticated`,
+  zusätzlich rollengeprüft über `lager.user_roles`). `okapi_stock` ist bereits in
+  `PGRST_DB_SCHEMAS` – die Instanzkonfiguration bleibt unverändert.
+- Frontend: statisches HTML, Supabase Auth, nur `ANON_KEY`. Nie den `SERVICE_ROLE_KEY` einbetten.
+- Die Auth-Nutzer sind für alle Projekte auf der Instanz gemeinsam. Zugang gewährt
+  ausschließlich ein Eintrag in `lager.user_roles`.
+
+## Rollen
+
+| Rolle | darf |
 |---|---|
-| `lager_whoami()` | jeder eingeloggte Nutzer |
-| `lager_stock_latest()`, `lager_stock_series(sku, tage)`, `lager_forecast(fenster_tage)`, `lager_orders_list(status)` | viewer, orderer, admin |
-| `lager_order_add(...)`, `lager_order_set_status(id, status)` | orderer, admin |
-| `lager_sku_settings_upsert(...)`, `lager_sku_settings_list()` | admin |
+| `viewer` | alles lesen |
+| `lager` | + Wareneingang buchen, Inventurkorrekturen, Kommentare |
+| `einkauf` | + Bestellungen anlegen/ändern, SKU-Einstellungen |
+| `admin` | + Sync auslösen |
+
+## API-Funktionen (RPC, Header `Accept-Profile: okapi_stock`, `Content-Profile: okapi_stock`)
+
+| Funktion | Zweck |
+|---|---|
+| `lager_whoami()` | eigene Rolle (null = nicht freigeschaltet) |
+| `lager_stock_latest()` / `lager_stock_series(sku, tage)` | Bestand aktuell / Verlauf |
+| `lager_forecast(fenster_tage)` | Reichweite, Ausverkaufsdatum, Bestellen-bis, Status |
+| `lager_detected_inflows(tage)` | erkannte Zugänge aus Bestandssprüngen |
+| `lager_orders_list(status)` | Bestellungen (`offen`, `alle`, …) |
+| `lager_order_add(...)`, `lager_order_update(...)` | Bestellung anlegen/ändern (einkauf, admin) |
+| `lager_order_receive(id, datum, menge, kommentar)` | Wareneingang buchen (lager, einkauf, admin) |
+| `lager_note_add(sku, art, text, mengenänderung, datum)`, `lager_notes_list(sku, tage)` | Kommentar / Inventurkorrektur |
+| `lager_sku_settings_upsert(...)`, `lager_sku_settings_list()` | Lieferzeit, Puffer, Herkunft extern/intern |
+| `lager_sync_now()` | Kopie sofort aktualisieren (admin) |
 
 ## Prognoselogik (v1)
 
-- Tagesverbrauch = Summe der Bestandsrückgänge zwischen aufeinanderfolgenden Tagen im
-  Fenster (Standard 28 Tage) ÷ Fensterlänge. Zugänge zählen nicht als negativer Verbrauch.
-- Reichweite = aktueller `effective_stock` ÷ Tagesverbrauch.
-- Bestellen bis = Ausverkaufsdatum − Lieferzeit − Sicherheitspuffer (Standard 14 + 7 Tage,
-  je SKU in `lager.sku_settings` änderbar).
-- Status: `kritisch` (Reichweite ≤ Lieferzeit), `bestellen` (≤ Lieferzeit + Puffer), `ok`,
-  `kein_verbrauch`. `data_stale` = letzter Bestand älter als 2 Tage.
-- Offene `expected_orders` werden als `incoming_qty` und `days_of_cover_incl_orders`
-  berücksichtigt.
+- **Tagesverbrauch** = Summe der Bestandsrückgänge zwischen aufeinanderfolgenden Tagen im
+  Fenster (Standard 28 Tage) ÷ Fensterlänge. Zugänge zählen nicht als negativer Verbrauch;
+  Inventurkorrekturen werden herausgerechnet.
+- **Reichweite** = `effective_stock` ÷ Tagesverbrauch.
+- **Lieferzeit** = Wert aus `sku_settings`, sonst Mittel der letzten 5 eingebuchten Bestellungen
+  (Bestelldatum bis Warenzugang), sonst 14 Tage. Puffer Standard 7 Tage.
+- **Bestellen bis** = Ausverkaufsdatum − Lieferzeit − Puffer.
+- **Offene Bestellungen** (Restmenge) kommen zum erwarteten Liefertermin hinzu
+  (`stockout_date_incl_orders`); überfällige zählen ab morgen.
+- **Status:** `kritisch` (Reichweite ≤ Lieferzeit, keine rechtzeitige Lieferung),
+  `bestellen` (≤ Lieferzeit + Puffer), `bestellt` (offene Bestellung deckt die Lücke),
+  `ok`, `kein_verbrauch`. `data_stale` = letzter Bestand älter als 2 Tage.
 
-## Migration einspielen (Windows PowerShell, im Repo-Ordner)
+## Einspielen (Windows PowerShell)
+
+Einmalig Repo holen (der Ordner `migrations` muss im aktuellen Verzeichnis liegen):
+
+```powershell
+cd $HOME
+git clone https://github.com/Carsten-F/okapi-lager-cockpit.git
+cd okapi-lager-cockpit
+git checkout claude/supabase-lagerdaten-interface-vkb4si
+```
+
+Bei späteren Änderungen: `git pull`. Dann:
 
 ```powershell
 ssh root@server7.centaurus.info "mkdir -p /opt/migrations-lager"
 scp migrations\001_lager_schema.sql root@server7.centaurus.info:/opt/migrations-lager/
 ssh root@server7.centaurus.info "docker exec -i supabase-db psql -U postgres -d postgres -X -v ON_ERROR_STOP=1 < /opt/migrations-lager/001_lager_schema.sql"
+Get-Content migrations\verify.sql | ssh root@server7.centaurus.info "docker exec -i supabase-db psql -U postgres -d postgres -X" | Tee-Object $env:TEMP\verify.txt
 ```
 
-Kontrolle (nur lesend):
+Die Migration ist wiederholbar. Rückgängig machen: `migrations/001_lager_schema_rollback.sql`
+(löscht alle Daten in `lager`, nicht `okapi_stock.stock_history`).
 
-```powershell
-Get-Content migrations\verify.sql | ssh root@server7.centaurus.info "docker exec -i supabase-db psql -U postgres -d postgres -X"
+### Erster Admin
+
+Nutzer-UUID aus Studio → Authentication → Users kopieren, `002_seed_first_admin.sql.example`
+als `002_seed_first_admin.sql` speichern, UUID eintragen, wie oben per `scp` und `psql` ausführen.
+Nicht die UUID des Magento-Sync-Nutzers verwenden.
+
+### Tägliche Synchronisation (optional, erst nach Freigabe)
+
+Die Arbeitskopie wird nach dem Magento-Import aktualisiert. Der Import läuft derzeit gegen
+ca. 17:35 Uhr Berlin; Cron-Zeile ergänzen, ohne bestehende Einträge zu überschreiben:
+
+```bash
+( crontab -l 2>/dev/null; echo 'CRON_TZ=Europe/Berlin'; echo '0 18 * * * docker exec supabase-db psql -U postgres -d postgres -X -c "select lager.sync_from_magento()" >> /var/log/lager-sync.log 2>&1' ) | crontab -
 ```
 
-Ersten Admin anlegen: `migrations/002_seed_first_admin.sql.example` kopieren, UUID eintragen,
-auf dieselbe Weise ausführen. Rückgängig machen: `migrations/001_lager_schema_rollback.sql`
-(löscht die Daten in `lager`).
+Alternativ löst ein Admin den Sync im Interface aus (`lager_sync_now`).
 
-## Wichtig auf dieser Instanz
+## Tests
 
-- Die Auth-Nutzer sind für alle Projekte auf der Instanz gemeinsam. Zugriff gewährt
-  ausschließlich ein Eintrag in `lager.user_roles`.
-- `okapi_stock.stock_history` hat Policies und Grants für den Magento-Sync-Nutzer. Diese
-  werden nicht angefasst.
-- Es gibt aktuell keine Sicherung der Datenbank. Vor Produktivbetrieb klären.
+`tests/stub.sql` baut die relevanten Teile der Instanz nach, `tests/smoke.sql` prüft Rechte,
+Rollen, Prognose und Sync. Lokal gegen ein leeres Postgres ≥ 15 ausführen:
+`stub.sql` → `migrations/001_lager_schema.sql` → `tests/smoke.sql`.
+
+## Offen
+
+- Sicherung der Datenbank (auf der Instanz gibt es aktuell keine).
+- Kennzeichnung extern/intern (ONYX) je Produkt: Spalte `sku_settings.supply_source` ist bereit.
+- Frontend (Login, Tagesauswertung, Prognose, Bestell- und Wareneingangsformulare).

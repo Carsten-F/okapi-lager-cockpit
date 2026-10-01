@@ -1,7 +1,0 @@
--- Ersten Admin freischalten. Vorlage: Datei ohne ".example" kopieren und die UUID
--- des Auth-Nutzers eintragen (Studio > Authentication > Users).
--- NICHT die UUID des Magento-Sync-Nutzers verwenden.
-
-insert into lager.user_roles (user_id, role, display_name)
-values ('00000000-0000-0000-0000-000000000000', 'admin', 'Carsten')
-on conflict (user_id) do update set role = excluded.role, display_name = excluded.display_name;

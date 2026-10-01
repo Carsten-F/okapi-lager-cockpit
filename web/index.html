@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>OKAPI Lager-Cockpit</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M7 22h18M9 22V14m7 8V9m7 13v-6' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="login" class="login" hidden>
+    <form id="loginForm" class="login-card" autocomplete="on">
+      <h1>Lager-Cockpit</h1>
+      <p class="muted">Bitte anmelden.</p>
+      <label>E-Mail<input type="email" name="email" autocomplete="username" required></label>
+      <label>Passwort<input type="password" name="password" autocomplete="current-password" required></label>
+      <p id="loginError" class="form-error" role="alert" hidden></p>
+      <button class="btn primary" type="submit">Anmelden</button>
+    </form>
+  </div>
+
+  <div id="app" hidden>
+    <header class="topbar">
+      <div class="brand">Lager-Cockpit</div>
+      <nav id="nav" aria-label="Bereiche"></nav>
+      <div class="topbar-right">
+        <span id="whoami" class="who"></span>
+        <button id="themeBtn" class="btn ghost" type="button" aria-label="Darstellung wechseln" title="Hell / Dunkel">◐</button>
+        <button id="logoutBtn" class="btn ghost" type="button">Abmelden</button>
+      </div>
+    </header>
+    <main id="view" tabindex="-1"></main>
+  </div>
+
+  <div id="denied" class="login" hidden>
+    <div class="login-card">
+      <h1>Kein Zugang</h1>
+      <p>Ihr Konto ist angemeldet, aber für das Lager-Cockpit nicht freigeschaltet. Bitte wenden Sie sich an den Administrator.</p>
+      <p class="muted" id="deniedUser"></p>
+      <button id="deniedLogout" class="btn primary" type="button">Abmelden</button>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script src="js/vendor/supabase.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

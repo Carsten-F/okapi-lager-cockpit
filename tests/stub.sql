@@ -15,3 +15,6 @@ insert into okapi_stock.stock_history(product_name,sku,stock_qty,stock_offset,ef
 select 'Prod C','C',30-i,0,30-i,current_date-(10-i) from generate_series(0,10) i;
 insert into okapi_stock.stock_history(product_name,sku,stock_qty,stock_offset,effective_stock,date)
 select 'Prod D','D',v,3,v,current_date-(10-i) from (select i, case when i<8 then 100-2*i else 100-2*i-10 end v from generate_series(0,10) i) t;
+-- E: Bestand 0, kein Verbrauch -> muss als kritisch/ausverkauft erscheinen
+insert into okapi_stock.stock_history(product_name,sku,stock_qty,stock_offset,effective_stock,date)
+select 'Prod E','E',0,0,0,current_date-(10-i) from generate_series(0,10) i;

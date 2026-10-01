@@ -1,0 +1,7 @@
+{
+  "name": "lager-cockpit-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Ende-zu-Ende-Test des Web-Interfaces gegen eine lokale Postgres-Datenbank (Mock der Supabase-API)",
+  "dependencies": { "pg": "^8.11.0", "playwright-core": "^1.48.0" }
+}

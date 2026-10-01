@@ -1,0 +1,23 @@
+-- Rolle fuer einen Nutzer vergeben oder aendern. Vorlage kopieren (ohne ".example"),
+-- E-Mail, Rolle und Anzeigename eintragen. Nutzer vorher in Studio anlegen
+-- (Authentication > Users > Add user, "Auto Confirm User" ankreuzen).
+--
+-- Rollen:  viewer  = nur lesen
+--          lager   = lesen + Wareneingang buchen, Inventurkorrekturen, Kommentare
+--          einkauf = wie lager + Bestellungen anlegen/aendern, Artikel-Einstellungen
+--          admin   = alles inkl. Datenabgleich
+-- Nicht die Magento-Sync-Kennung (e9baa3fc-...) verwenden.
+
+insert into lager.user_roles (user_id, role, display_name)
+select u.id, 'admin', 'Vorname Nachname'
+from auth.users u
+where lower(u.email) = lower('name@okapi-online.de')
+on conflict (user_id) do update
+  set role = excluded.role, display_name = excluded.display_name;
+
+-- Pruefen (zeigt nur freigeschaltete Nutzer):
+select r.role, r.display_name, u.email
+from lager.user_roles r join auth.users u on u.id = r.user_id order by r.role, u.email;
+
+-- Zugang entziehen:
+-- delete from lager.user_roles where user_id = (select id from auth.users where lower(email) = lower('name@okapi-online.de'));

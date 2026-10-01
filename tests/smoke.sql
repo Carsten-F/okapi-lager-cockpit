@@ -18,7 +18,7 @@ reset role;
 
 \echo == viewer: lesen ok, schreiben verboten (erwartet forbidden)
 set role authenticated; set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
-select jsonb_array_length(okapi_stock.lager_stock_latest()) as skus_erwartet_4;
+select jsonb_array_length(okapi_stock.lager_stock_latest()) as skus_erwartet_5;
 select okapi_stock.lager_note_add('A','kommentar','x');
 select okapi_stock.lager_order_add('A',1,current_date);
 reset role;
@@ -68,4 +68,9 @@ select okapi_stock.lager_sku_settings_upsert('C', 25, 2, 'extern', 'Lieferant X'
 select f->>'status' status_zu_spaet_erwartet_kritisch from jsonb_array_elements(okapi_stock.lager_forecast()) f where f->>'sku'='C';
 select okapi_stock.lager_order_update(1, null, current_date+10);
 select f->>'status' status_rechtzeitig_erwartet_bestellt, f->>'stockout_date_incl_orders' so_incl from jsonb_array_elements(okapi_stock.lager_forecast()) f where f->>'sku'='C';
+reset role;
+
+\echo == Bestand 0 ohne Verbrauch (E) -> kritisch, ausverkauft
+set role authenticated; set request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444';
+select f->>'status' status, f->>'out_of_stock' leer, f->>'days_of_cover' cover from jsonb_array_elements(okapi_stock.lager_forecast()) f where f->>'sku'='E';
 reset role;

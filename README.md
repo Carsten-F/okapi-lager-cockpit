@@ -74,23 +74,31 @@ Jede Änderung an einer Bestellung wird protokolliert (wer, wann, alt → neu), 
 | `001_lager_schema_rollback.sql` | macht 001 rückgängig (löscht die Daten in `lager`) |
 | `verify.sql` | Prüfung, nur lesend |
 
-## Einrichtung auf dem Server (Windows PowerShell, im Repo-Ordner)
+## Einrichtung auf dem Server (Windows PowerShell)
 
-Einmalig, falls die Shell-Skripte Windows-Zeilenenden haben (die `.gitattributes` verhindert das
-künftig): `git pull`, dann `git rm --cached -r -q . ; git reset --hard -q`.
+Alle Befehle im **Repo-Ordner** ausführen (`cd $HOME\okapi-lager-cockpit`), nicht im Benutzerordner.
+Einmalig vorher (Zeilenenden der Shell-Skripte, die `.gitattributes` verhindert das künftig):
 
 ```powershell
+cd $HOME\okapi-lager-cockpit
 git pull
-.\scripts\migrate.ps1                  # Migrationen 003, 004, 005 (Erstinstallation: -Files mit 001 davor)
-.\scripts\deploy_server.ps1            # Web-Interface, Skripte und Apache-Vorlage nach /opt/lager-cockpit
-ssh root@server7.centaurus.info "/opt/lager-cockpit/deploy/apply_apache.sh"
+git rm --cached -r -q . ; git reset --hard -q
 ```
 
-`apply_apache.sh` trägt `/lager` im vHost von supabase.okapi-online.de ein: Sicherung der Datei,
-`configtest`, nur bei Erfolg `reload` (kein Neustart; die Shops laufen weiter), bei Fehler wird das
-Original zurückgespielt. Wiederholbar.
+Dann alles in einem Lauf (Migrationen, Dateien hochladen, Apache eintragen, Kontrolle, Trockenlauf
+der Registrierung). `-ExecutionPolicy Bypass` gilt nur für diesen Aufruf und umgeht die Windows-Sperre
+für unsignierte Skripte:
 
-Kontrolle (nur lesend):
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1
+```
+
+Die Einzelschritte (`migrate.ps1`, `deploy_server.ps1`, `apply_apache.sh`) lassen sich auch getrennt
+aufrufen. `apply_apache.sh` trägt `/lager` im vHost von supabase.okapi-online.de ein: Sicherung der
+Datei, `configtest`, nur bei Erfolg `reload` (kein Neustart; die Shops laufen weiter), bei Fehler wird
+das Original zurückgespielt. Wiederholbar.
+
+Kontrolle der Datenbank jederzeit (nur lesend):
 
 ```powershell
 Get-Content migrations\verify.sql | ssh root@server7.centaurus.info "docker exec -i supabase-db psql -U postgres -d postgres -X"

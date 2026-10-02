@@ -74,3 +74,53 @@ reset role;
 set role authenticated; set request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444';
 select f->>'status' status, f->>'out_of_stock' leer, f->>'days_of_cover' cover from jsonb_array_elements(okapi_stock.lager_forecast()) f where f->>'sku'='E';
 reset role;
+
+-- ========== Migration 005: Aenderungen durch das Lager, Verlauf, automatische Wareneingangs-Erkennung ==========
+\echo == 005: einkauf legt Bestellungen an (D: 100 Stk., B: 100 Stk., E: 1000 Stk.)
+set role authenticated; set request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555';
+select okapi_stock.lager_order_add('D', 100, current_date, current_date+5, null, 'Lieferant D', null) as d_order;
+select okapi_stock.lager_order_add('B', 100, current_date, current_date+3, null, null, null) as b_order;
+select okapi_stock.lager_order_add('E', 1000, current_date, null, 20, null, null) as e_order;
+reset role;
+
+\echo == 005: lager aendert Liefertermin und Menge (ok), Status (erwartet forbidden), Menge < eingegangen (erwartet Fehler)
+set role authenticated; set request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444';
+select okapi_stock.lager_order_update(3, null, current_date + 12) as termin;
+select okapi_stock.lager_order_update(3, 50) as menge_50;
+select okapi_stock.lager_order_update(3, 100) as menge_100;
+select okapi_stock.lager_order_update(3, 100) as unveraendert_changed_false;
+select okapi_stock.lager_order_update(3, null, null, null, null, 'storniert');
+select jsonb_array_length(okapi_stock.lager_order_history(3)) as verlauf_erwartet_4;
+select h->>'action' as aktion, h->>'by' as von, h->'changes' as aenderung from jsonb_array_elements(okapi_stock.lager_order_history(3)) h;
+reset role;
+
+\echo == 005: viewer darf nichts aendern (erwartet forbidden)
+set role authenticated; set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+select okapi_stock.lager_order_update(3, null, current_date);
+select okapi_stock.lager_order_reopen(3);
+reset role;
+
+\echo == 005: Magento liefert neuen Tag. D +98 (>=90 % von 100 -> eingebucht), B +30 (Teillieferung), E +5 (unter 10 % der Restmenge -> nicht zugeordnet)
+insert into okapi_stock.stock_history(product_name,sku,stock_qty,stock_offset,effective_stock,date) values
+ ('Prod D','D',168,3,168,current_date+1), ('Prod B','B',80,0,80,current_date+1), ('Prod E','E',5,0,5,current_date+1);
+select lager.sync_from_magento() as zeilen_geaendert;
+select lager.sync_from_magento() as zweiter_lauf_erwartet_0;
+select id, sku, status, received_qty, received_source, archived_at is not null as archiviert from lager.purchase_orders where id in (3,4,5) order by id;
+select sku, date, inflow, allocations, surplus from lager.inflow_log where date = current_date + 1 order by sku;
+
+\echo == 005: Prognose/Listen nach der Zuordnung
+set role authenticated; set request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444';
+select f->>'sku' sku, f->>'incoming_qty' offen_bestellt, f->>'next_arrival' naechste_lieferung, f->>'status' status
+  from jsonb_array_elements(okapi_stock.lager_forecast()) f where f->>'sku' in ('D','B','E') order by 1;
+select jsonb_array_length(okapi_stock.lager_orders_list('offen')) as offen, jsonb_array_length(okapi_stock.lager_orders_list('archiv')) as archiv;
+select i->>'sku' sku, i->>'inflow' zugang, i->>'booked_orders' gebucht from jsonb_array_elements(okapi_stock.lager_detected_inflows(30)) i where (i->>'date')::date = current_date + 1 order by 1;
+select h->>'action' aktion, h->>'by' von from jsonb_array_elements(okapi_stock.lager_order_history(3)) h limit 1;
+
+\echo == 005: lager setzt falsch zugeordnete Bestellung 3 zurueck; Bestellung 5 (nie gebucht) nicht (erwartet Fehler)
+select okapi_stock.lager_order_reopen(3, 'war Rueckbuchung');
+select okapi_stock.lager_order_reopen(5);
+select i->>'sku' sku, i->>'booked_orders' gebucht from jsonb_array_elements(okapi_stock.lager_detected_inflows(30)) i where (i->>'date')::date = current_date + 1 and i->>'sku' = 'D';
+select f->>'incoming_qty' offen_bestellt_D from jsonb_array_elements(okapi_stock.lager_forecast()) f where f->>'sku' = 'D';
+reset role;
+select lager.sync_from_magento() as dritter_lauf_erwartet_0;
+select status, received_qty from lager.purchase_orders where id = 3;

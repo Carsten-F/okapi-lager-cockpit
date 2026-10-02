@@ -1,5 +1,5 @@
 // Eingabeformulare. Jede Funktion gibt zurueck, ob gespeichert wurde.
-import { openForm, todayBerlin, toast, num0 } from './ui.js';
+import { h, openForm, openDialog, todayBerlin, toast, num0, num2, fmtDate } from './ui.js';
 import { rpc } from './api.js';
 
 const skuOptions = (ctx) => [{ value: '', label: '– bitte wählen –' },
@@ -71,25 +71,62 @@ export async function formReceive(ctx, o) {
 }
 
 export async function formOrderEdit(ctx, o) {
+  const statusField = ctx.can('order') ? [{ name: 'status', label: 'Status', type: 'select', value: o.status, options: [
+    { value: 'bestellt', label: 'Bestellt' }, { value: 'bestaetigt', label: 'Bestätigt' }, { value: 'teilgeliefert', label: 'Teilgeliefert' },
+    { value: 'eingebucht', label: 'Eingebucht' }, { value: 'storniert', label: 'Storniert' }] }] : [];
   const saved = await openForm({
-    title: `Bestellung ${o.id} bearbeiten`, subtitle: `${o.product_name || o.sku} (${o.sku})`,
+    title: `Bestellung ${o.id} bearbeiten`, subtitle: `${o.product_name || o.sku} (${o.sku}) · Änderungen werden mit Datum und Name protokolliert`,
     fields: [
-      { name: 'qty', label: 'Menge', type: 'number', value: o.qty },
-      { name: 'expected_delivery', label: 'Voraussichtl. Lieferdatum', type: 'date', value: o.expected_delivery || '' },
+      { name: 'qty', label: 'Bestellte Menge', type: 'number', value: o.qty, help: Number(o.received_qty) > 0 ? `Bereits eingegangen: ${num0(o.received_qty)}` : null },
+      { name: 'expected_delivery', label: 'Voraussichtl. Lieferdatum', type: 'date', value: o.expected_delivery || '', help: 'Bei Verzögerung hier den neuen Termin eintragen.' },
       { name: 'expected_lead_days', label: 'Zeitspanne bis Wareneinbuchung (Tage)', type: 'number', value: o.expected_lead_days ?? '' },
       { name: 'supplier', label: 'Lieferant / Hersteller', type: 'text', value: o.supplier || '' },
-      { name: 'status', label: 'Status', type: 'select', value: o.status, options: [
-        { value: 'bestellt', label: 'Bestellt' }, { value: 'bestaetigt', label: 'Bestätigt' }, { value: 'teilgeliefert', label: 'Teilgeliefert' },
-        { value: 'eingebucht', label: 'Eingebucht' }, { value: 'storniert', label: 'Storniert' }] },
+      ...statusField,
       { name: 'comment', label: 'Kommentar', type: 'textarea', value: o.comment || '' },
     ],
     submit: async (v) => {
-      await rpc('lager_order_update', { p_id: o.id, p_qty: v.qty, p_expected_delivery: v.expected_delivery,
-        p_expected_lead_days: v.expected_lead_days, p_supplier: v.supplier, p_status: v.status, p_comment: v.comment });
+      const r = await rpc('lager_order_update', { p_id: o.id, p_qty: v.qty, p_expected_delivery: v.expected_delivery,
+        p_expected_lead_days: v.expected_lead_days, p_supplier: v.supplier, p_status: ctx.can('order') ? v.status : null, p_comment: v.comment });
+      if (r && r.changed === false) throw new Error('Es wurde nichts geändert.');
     },
   });
   if (saved) toast('Bestellung aktualisiert.');
   return saved;
+}
+
+export async function formReopen(ctx, o) {
+  const saved = await openForm({
+    title: 'Eingang zurücksetzen',
+    subtitle: `Bestellung ${o.id} (${o.product_name || o.sku}) wird wieder geöffnet; die gebuchte Menge (${num0(o.received_qty)}) wird entfernt.`,
+    submitLabel: 'Zurücksetzen',
+    fields: [{ name: 'comment', label: 'Grund', type: 'textarea', placeholder: 'z. B. war eine Rückbuchung, falsche Zuordnung' }],
+    submit: async (v) => { await rpc('lager_order_reopen', { p_id: o.id, p_comment: v.comment }); },
+  });
+  if (saved) toast('Bestellung wieder geöffnet.');
+  return saved;
+}
+
+const FIELD = { menge: 'Menge', liefertermin: 'Liefertermin', zeitspanne_tage: 'Zeitspanne (Tage)', lieferant: 'Lieferant', status: 'Status',
+  kommentar: 'Kommentar', eingegangen: 'Eingegangen', zugang_am: 'Zugang am', gesamt_eingegangen: 'Insgesamt eingegangen', bestellt_am: 'Bestellt am' };
+const ACTION = { angelegt: 'Angelegt', geaendert: 'Geändert', wareneingang_gebucht: 'Wareneingang gebucht', wareneingang_erkannt: 'Wareneingang automatisch erkannt', zurueckgesetzt: 'Zurückgesetzt' };
+const STATUS_L = { bestellt: 'Bestellt', bestaetigt: 'Bestätigt', teilgeliefert: 'Teilgeliefert', eingebucht: 'Eingebucht', storniert: 'Storniert' };
+function fmtVal(k, v) {
+  if (v == null || v === '') return '–';
+  if (k === 'status') return STATUS_L[v] || v;
+  if (typeof v === 'number') return num2(v);
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return fmtDate(v);
+  return String(v);
+}
+export function openOrderHistory(o) {
+  const body = h('div', null, h('p', { class: 'muted' }, 'Lade …'));
+  openDialog({ title: `Verlauf Bestellung ${o.id}`, subtitle: `${o.product_name || o.sku} (${o.sku})`, narrow: true, body });
+  rpc('lager_order_history', { p_id: o.id }).then((rows) => {
+    body.replaceChildren(rows.length ? h('ul', { style: 'margin:0;padding:0;list-style:none;display:grid;gap:12px' }, rows.map((r) => h('li', null,
+      h('div', null, h('b', null, ACTION[r.action] || r.action), h('span', { class: 'muted' }, ` · ${new Date(r.at).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' })}`, r.by ? ` · ${r.by}` : '')),
+      r.changes ? h('ul', { style: 'margin:2px 0 0;padding-left:18px' }, Object.entries(r.changes).map(([k, v]) => h('li', null,
+        `${FIELD[k] || k}: `, v && typeof v === 'object' && 'neu' in v ? `${fmtVal(k, v.alt)} → ${fmtVal(k, v.neu)}` : fmtVal(k, v)))) : null,
+      r.note ? h('div', { class: 'muted' }, r.note) : null))) : h('p', { class: 'muted' }, 'Keine Einträge.'));
+  }).catch((e) => { body.replaceChildren(h('p', { class: 'form-error' }, e.message)); });
 }
 
 export async function formSettings(ctx, sku) {

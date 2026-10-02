@@ -30,3 +30,12 @@ select (select count(*) from lager.stock_daily) as kopie_zeilen,
 select policyname, cmd from pg_policies where tablename = 'stock_history' order by 1;
 select grantee, privilege_type from information_schema.role_table_grants
 where table_name = 'stock_history' and grantee in ('anon', 'authenticated') order by 1, 2;
+
+\echo === Quelle okapi_stock.stock_history: Zeilen je Datum (letzte 7 Tage) ===
+select date, count(*) as zeilen, count(distinct sku) as skus from okapi_stock.stock_history group by date order by date desc limit 7;
+
+\echo === Bestellungen nach Status (ab Migration 005 mit Archiv) ===
+select status, count(*) as anzahl, count(*) filter (where received_source = 'auto') as davon_automatisch from lager.purchase_orders group by 1 order by 1;
+
+\echo === Zugangsprotokoll (letzte 10, ab Migration 005) ===
+select date, sku, inflow, allocations, surplus from lager.inflow_log order by date desc, sku limit 10;

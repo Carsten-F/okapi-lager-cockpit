@@ -5,7 +5,7 @@ import { renderOrders } from './views/orders.js';
 import { renderFlows } from './views/flows.js';
 import { renderSettings } from './views/settings.js';
 
-const PERMS = { note: ['lager', 'einkauf', 'admin'], receive: ['lager', 'einkauf', 'admin'], order: ['einkauf', 'admin'], settings: ['einkauf', 'admin'], sync: ['admin'] };
+const PERMS = { note: ['lager', 'einkauf', 'admin'], receive: ['lager', 'einkauf', 'admin'], order: ['einkauf', 'admin'], orderEdit: ['lager', 'einkauf', 'admin'], reopen: ['lager', 'einkauf', 'admin'], settings: ['einkauf', 'admin'], sync: ['admin'] };
 const ROLE_LABEL = { viewer: 'Lesen', lager: 'Lager', einkauf: 'Einkauf', admin: 'Admin' };
 const VIEWS = [
   { id: 'uebersicht', label: 'Übersicht', render: renderOverview },

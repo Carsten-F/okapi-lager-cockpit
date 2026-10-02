@@ -2,11 +2,8 @@
 import { h, openDialog, statusBadge, num0, num1, num2, signed, fmtDate, fmtShort, todayBerlin, toast } from './ui.js';
 import { rpc } from './api.js';
 import { stockChart, stockTable } from './chart.js';
-import { formNote, formOrder, formSettings, formReceive, formOrderEdit } from './forms.js';
-
-const ORDER_STATUS = { bestellt: 'Bestellt', bestaetigt: 'Bestätigt', teilgeliefert: 'Teilgeliefert', eingebucht: 'Eingebucht', storniert: 'Storniert' };
-export const orderStatusLabel = (s) => ORDER_STATUS[s] || s;
-const isOpen = (o) => ['bestellt', 'bestaetigt', 'teilgeliefert'].includes(o.status);
+import { formNote, formOrder, formSettings } from './forms.js';
+import { ordersTable, isOpen, isArchived } from './orders-ui.js';
 
 export function openSku(ctx, sku) {
   const root = h('div', null);
@@ -48,15 +45,13 @@ export function openSku(ctx, sku) {
       chartHost, tableHost,
       h('div', { class: 'chart-note' }, h('span', null, '– – Prognose ohne weitere Lieferungen'), h('span', null, '◆ erwartete Lieferung')));
 
-    const orderRows = orders.map((o) => h('tr', null,
-      h('td', null, `#${o.id}`), h('td', null, orderStatusLabel(o.status)), h('td', { class: 'num' }, num0(o.qty)), h('td', { class: 'num' }, num0(o.received_qty)),
-      h('td', null, o.eta ? fmtDate(o.eta) : '–'), h('td', null, o.received_on ? fmtDate(o.received_on) : '–'), h('td', { class: 'wrap' }, o.supplier || '', o.comment ? h('div', { class: 'small muted' }, o.comment) : null),
-      h('td', null, isOpen(o) && ctx.can('receive') ? h('button', { class: 'btn small', type: 'button', onclick: async () => { if (await formReceive(ctx, o)) { await ctx.reload(); await fill(); } } }, 'Eingang buchen') : null,
-        ' ', isOpen(o) && ctx.can('order') ? h('button', { class: 'btn small', type: 'button', onclick: async () => { if (await formOrderEdit(ctx, o)) { await ctx.reload(); await fill(); } } }, 'Bearbeiten') : null)));
-    const ordersSection = h('section', null, h('h3', { style: 'margin-bottom:6px' }, 'Bestellungen'),
-      orders.length ? h('div', { class: 'card table-wrap' }, h('table', null,
-        h('thead', null, h('tr', null, ...['Nr.', 'Status', 'Menge', 'Eingegangen', 'Erwartet', 'Warenzugang', 'Lieferant / Kommentar', ''].map((t, i) => h('th', { class: i === 2 || i === 3 ? 'num' : '' }, t)))),
-        h('tbody', null, orderRows))) : h('p', { class: 'muted' }, 'Keine Bestellungen erfasst.'));
+    const openOrders = orders.filter((o) => !isArchived(o)); const archived = orders.filter(isArchived);
+    const refill = () => fill();
+    const tableOf = (list) => ordersTable(ctx, list, { product: false, onChange: refill });
+    const ordersSection = h('section', null, h('h3', { style: 'margin-bottom:6px' }, 'Offene Bestellungen / nächste Lieferung'),
+      openOrders.length ? h('div', { class: 'card' }, tableOf(openOrders)) : h('p', { class: 'muted' }, 'Keine offene Bestellung.'),
+      archived.length ? h('details', { style: 'margin-top:10px' }, h('summary', { style: 'cursor:pointer;font-weight:600' }, `Archiv (${archived.length})`),
+        h('div', { class: 'card', style: 'margin-top:6px' }, tableOf(archived))) : null);
 
     const noteItems = notes.map((n) => h('li', null,
       h('b', null, fmtDate(n.effective_date)), ' · ', n.kind === 'inventurkorrektur' ? `Inventurkorrektur ${signed(n.qty_delta)}` : 'Kommentar',

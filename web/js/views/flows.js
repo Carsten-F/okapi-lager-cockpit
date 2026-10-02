@@ -8,7 +8,7 @@ export async function renderFlows(ctx, root) {
   root.replaceChildren(
     h('div', { class: 'view-head' }, h('h1', null, 'Bewegungen und Kommentare')),
     h('section', { style: 'margin-bottom:20px' }, h('h2', { style: 'margin-bottom:4px' }, 'Erkannte Zugänge (30 Tage)'),
-      h('p', { class: 'muted small', style: 'margin:0 0 8px' }, 'Bestandssprünge nach oben (Inventurkorrekturen abgezogen). Eingänge ohne gebuchte Bestellung bitte prüfen.'), inflowHost),
+      h('p', { class: 'muted small', style: 'margin:0 0 8px' }, 'Bestandssprünge nach oben (Inventurkorrekturen abgezogen). Sie werden automatisch offenen Bestellungen zugeordnet und diese archiviert; Zugänge ohne Bestellung bitte prüfen.'), inflowHost),
     h('section', null, h('div', { class: 'view-head', style: 'margin-bottom:6px' }, h('h2', null, 'Kommentare und Inventurkorrekturen (90 Tage)'),
       ctx.can('note') ? h('button', { class: 'btn primary', type: 'button', onclick: async () => { if (await formNote(ctx, null)) load(); } }, 'Eintrag hinzufügen') : null), notesHost));
 

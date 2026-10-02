@@ -38,7 +38,9 @@ export async function renderOverview(ctx, root) {
     if (!stock.length) { notice.hidden = false; notice.className = 'notice'; notice.replaceChildren(icon('clock', 'var(--series-1)'), 'Noch keine Bestandsdaten vorhanden. Sobald der Magento-Abruf läuft, erscheinen die Artikel hier.'); return; }
     const latest = stock.map((r) => r.date).sort().pop();
     const stale = rows().some((r) => r.data_stale);
-    notice.hidden = !stale; notice.className = 'notice';
+    const noHistory = rows().length > 0 && rows().every((r) => r.avg_daily_usage == null);
+    notice.hidden = !(stale || noHistory); notice.className = 'notice';
+    if (noHistory && !stale) { notice.replaceChildren(icon('clock', 'var(--series-1)'), 'Noch zu wenig Verlauf: Für Verbrauch und Reichweite werden Bestände von mindestens zwei Tagen benötigt. Sobald der nächste Tag abgerufen ist, erscheinen die Prognosen.'); return; }
     if (stale) notice.replaceChildren(icon('warn', 'var(--warning)'), `Der letzte Bestand ist vom ${fmtDate(latest)}. Der tägliche Abruf scheint nicht zu laufen – die Prognose ist veraltet.`);
   }
   function drawTiles() {

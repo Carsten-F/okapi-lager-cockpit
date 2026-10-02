@@ -85,7 +85,7 @@ git pull
 git rm --cached -r -q . ; git reset --hard -q
 ```
 
-Dann alles in einem Lauf (Migrationen, Dateien hochladen, Apache eintragen, Kontrolle, Trockenlauf
+Dann alles in einem Lauf (Migrationen, Dateien hochladen, Apache eintragen, Abgleich der Kopie, Kontrolle, Trockenlauf
 der Registrierung). `-ExecutionPolicy Bypass` gilt nur für diesen Aufruf und umgeht die Windows-Sperre
 für unsignierte Skripte:
 

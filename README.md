@@ -73,6 +73,7 @@ Jede Änderung an einer Bestellung wird protokolliert (wer, wann, alt → neu), 
 | `005_order_updates_archive.sql` | Lager darf Bestellungen ändern, Verlauf, automatische Wareneingangs-Erkennung, Archiv |
 | `006_forecast_rounding_fix.sql` | Korrektur: kein Status „bestellt“ und kein Datum „mit Lieferung“ ohne offene Bestellung (Rundungsfehler) |
 | `007_lifecycle_brand_import_sales.sql` | Artikelstatus (aktiv / nicht aktiv Jahreszeit / nicht aktiv Archiv), Marke, CSV-Import der Einstellungen, Absatzhistorie |
+| `009_jtl_layer.sql` | Schema `jtl` (Artikel, Lagerbestand, Belege nur mit Kundennummer), Absatz-Aufbau aus JTL. Kundendaten: getrennte Datenbank `migrations/pii/001_kunden_db.sql` |
 | `008_receipts_stockqty_alias.sql` | Wareneingangs-Erkennung aus `stock_qty` (Lagerwert) statt bestellbarem Bestand, Tabelle `sku_alias` (alte → neue Artikelnummer), Spalte `qty_retoure` |
 | `002_assign_role.sql.example` | Vorlage: Nutzer eine Rolle geben (kein Teil der Migrationen) |
 | `001_lager_schema_rollback.sql` | macht 001 rückgängig (löscht die Daten in `lager`) |
@@ -254,3 +255,7 @@ Die Dumps enthalten Geschäftsdaten; der Windows-Rechner sollte verschlüsselt s
 
 - Kennzeichnung extern/intern (ONYX) je Artikel: Spalte `sku_settings.supply_source` ist bereit.
 - Eine zweite Sicherungskopie außerhalb des Servers ist über die Windows-Aufgabe vorgesehen.
+
+## JTL-Anbindung und Datenplattform
+
+Siehe `docs/datenplattform.md` (Architektur, DSGVO, Inbetriebnahme), `docs/connectors.md` (Anforderungen), `connectors/jtl/` (Extraktion, Discovery-Skript) und `tests/jtl/run.sh`.

@@ -1,0 +1,5 @@
+doc_no,doc_type,doc_date,order_no,customer_no,customer_group,country,currency,net_total,gross_total
+RE1,rechnung,2026-10-01,AU1,K1,Endkunde,DE,EUR,24.9,29.63
+RE2,rechnung,2026-10-02,AU2,K2,Therapeut,DE,EUR,95,113.05
+RE3,rechnung,2026-10-02,AU3,K3,Händler,AT,EUR,60,60
+GS1,gutschrift,2026-10-03,,K1,Endkunde,DE,EUR,-24.9,-29.63

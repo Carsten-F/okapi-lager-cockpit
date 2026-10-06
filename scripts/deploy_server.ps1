@@ -22,13 +22,16 @@ try {
   if ($Server -notmatch '^[^@\s]+@[^@\s:]+$') { throw "Ungueltiger Server '$Server' (erwartet: benutzer@host)." }
 
   Step 'Lege Ordner auf dem Server an'
-  ssh $Server "mkdir -p $Target/scripts $Target/deploy /opt/backups/lager && chmod 700 /opt/backups/lager"; Check 'Ordner anlegen'
+  ssh $Server "mkdir -p $Target/scripts $Target/deploy $Target/connectors/jtl/queries /opt/backups/lager /opt/backups/kunden /etc/lager-cockpit && chmod 700 /opt/backups/lager /opt/backups/kunden /etc/lager-cockpit"; Check 'Ordner anlegen'
   Step 'Lade web/ hoch'
   scp -r web "${Server}:${Target}/"; Check 'Upload web'
   Step 'Lade deploy/ hoch'
   scp deploy/apache-lager.snippet.conf deploy/apply_apache.sh "${Server}:${Target}/deploy/"; Check 'Upload deploy'
+  Step 'Lade connectors/ hoch'
+  scp connectors/jtl/extract_jtl.py connectors/jtl/config.example.env connectors/jtl/discovery.sql connectors/jtl/requirements.txt "${Server}:${Target}/connectors/jtl/"; Check 'Upload connectors'
+  scp connectors/jtl/queries/*.sql "${Server}:${Target}/connectors/jtl/queries/"; Check 'Upload queries'
   Step 'Lade scripts/ hoch'
-  scp scripts/backup_lager.sh scripts/server/disable_signup.sh scripts/server/install_cron.sh "${Server}:${Target}/scripts/"; Check 'Upload scripts'
+  scp scripts/backup_lager.sh scripts/backup_kunden.sh scripts/server/disable_signup.sh scripts/server/install_cron.sh "${Server}:${Target}/scripts/"; Check 'Upload scripts'
   Step 'Setze Dateirechte (Web lesbar fuer den Apache, Skripte nur fuer root)'
   # scp von Windows legt Dateien mit zu strengen Rechten an; ohne diesen Schritt antwortet die Seite mit 403.
   ssh $Server "chmod 755 $Target $Target/scripts $Target/deploy; chmod -R u=rwX,go=rX $Target/web; chmod 644 $Target/deploy/apache-lager.snippet.conf; chmod 700 $Target/scripts/*.sh $Target/deploy/apply_apache.sh"; Check 'Dateirechte setzen'

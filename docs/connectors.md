@@ -1,6 +1,6 @@
 # Connectoren: JTL (Absatz und Lager) und Magento-Verkauf (Planung)
 
-Stand: Anforderungen geklärt, noch nichts gebaut. Offen sind die Zugänge (siehe „Was ich zum Bauen brauche“).
+Stand: Anforderungen geklärt. Das JTL-Extraktionswerkzeug ist gebaut und mit Testdaten geprüft (`connectors/jtl/`, Architektur und DSGVO in `docs/datenplattform.md`). Die JTL-Abfragen sind Entwürfe, bis das Ergebnis von `discovery.sql` vorliegt. Offen ist der Zugang.
 
 ## Geklärt
 

@@ -1,0 +1,4 @@
+sku,warehouse,qty_total,qty_available
+1101001,Hauptlager,120,100
+1101014,Hauptlager,40,40
+1101014,Sperrlager,5,0

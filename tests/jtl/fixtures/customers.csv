@@ -1,0 +1,4 @@
+customer_no,company,first_name,last_name,email,phone,street,zip,city,country,customer_group,created_on,newsletter_optin
+K1,,Anna,Muster,anna@example.org,0123,Weg 1,12345,Ort,DE,Endkunde,2021-01-01,1
+K2,Praxis Tier,Bernd,Beispiel,bernd@example.org,,Str 2,54321,Stadt,DE,Therapeut,2021-02-01,0
+K3,Handel GmbH,,,h@example.org,,Str 3,11111,Dorf,AT,Händler,2021-03-01,

@@ -1,8 +1,8 @@
 # Spielt Migrationen auf die Instanz ein (wiederholbar). Im Repo-Ordner:  .\scripts\migrate.ps1
-# Standard: 003 bis 006. Erstinstallation: -Files 001_lager_schema.sql,003_...,004_...,005_...
+# Standard: 003 bis 007. Erstinstallation: -Files 001_lager_schema.sql,003_...,004_...,005_...
 param(
   [string]$Server = 'root@server7.centaurus.info',
-  [string[]]$Files = @('003_order_eta_required.sql', '004_empty_stock.sql', '005_order_updates_archive.sql', '006_forecast_rounding_fix.sql')
+  [string[]]$Files = @('003_order_eta_required.sql', '004_empty_stock.sql', '005_order_updates_archive.sql', '006_forecast_rounding_fix.sql', '007_lifecycle_brand_import_sales.sql')
 )
 $ErrorActionPreference = 'Stop'
 Push-Location (Join-Path $PSScriptRoot '..')

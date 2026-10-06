@@ -38,7 +38,7 @@ export function stockChart(host, { points, usage, arrivals = [] }) {
     const Y = (v) => H - m.b - (v / yMax) * (H - m.t - m.b);
 
     svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', tabindex: 0,
-      'aria-label': `Bestandsverlauf, letzter Wert ${num0(last.value)} am ${fmtDate(last.date)}` });
+      'aria-label': `Verlauf des bestellbaren Bestands, letzter Wert ${num0(last.value)} am ${fmtDate(last.date)}` });
     const grid = s('g', { class: 'grid' }); const axis = s('g', { class: 'axis' });
     for (let v = 0; v <= yMax + 1e-9; v += step) {
       if (v > 0) grid.append(s('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v) }));
@@ -85,9 +85,9 @@ export function stockChart(host, { points, usage, arrivals = [] }) {
       const prev = idx > 0 ? points[idx - 1] : null;
       const rows = [
         h('div', { class: 'd' }, fmtDate(p.date)),
-        h('div', { class: 'r' }, h('span', { class: 'key' }), h('b', null, num0(p.value)), h('span', { class: 'muted' }, 'physisch')),
+        h('div', { class: 'r' }, h('span', { class: 'key' }), h('b', null, num0(p.value)), h('span', { class: 'muted' }, 'bestellbar')),
       ];
-      if (p.bestellbar != null) rows.push(h('div', { class: 'muted' }, `bestellbar ${num0(p.bestellbar)}`));
+      if (p.lager != null) rows.push(h('div', { class: 'muted' }, `Lager (stock_qty) ${num0(p.lager)}`));
       if (prev) { const dlt = p.value - prev.value; rows.push(h('div', { class: 'muted' }, `Veränderung ${signed(dlt)}`)); }
       if (p.korrektur) rows.push(h('div', null, `Inventurkorrektur ${signed(p.korrektur)}`));
       for (const a of arrivals) if (a.date === p.date) rows.push(h('div', null, `Lieferung erwartet: ${num0(a.qty)}`));
@@ -127,9 +127,78 @@ export function stockChart(host, { points, usage, arrivals = [] }) {
 // Tabellenansicht derselben Daten (Zugang ohne Maus).
 export function stockTable(points) {
   const body = [...points].reverse().map((p) => h('tr', null,
-    h('td', null, fmtDate(p.date)), h('td', { class: 'num' }, num0(p.value)), h('td', { class: 'num' }, num0(p.bestellbar)),
+    h('td', null, fmtDate(p.date)), h('td', { class: 'num' }, num0(p.value)), h('td', { class: 'num' }, num0(p.lager)),
     h('td', { class: 'num' }, p.korrektur ? signed(p.korrektur) : '')));
   return h('div', { class: 'table-wrap', style: 'max-height:260px' }, h('table', null,
-    h('thead', null, h('tr', null, h('th', null, 'Datum'), h('th', { class: 'num' }, 'Physisch'), h('th', { class: 'num' }, 'Bestellbar'), h('th', { class: 'num' }, 'Korrektur'))),
+    h('thead', null, h('tr', null, h('th', null, 'Datum'), h('th', { class: 'num' }, 'Bestellbar'), h('th', { class: 'num' }, 'Lager'), h('th', { class: 'num' }, 'Korrektur'))),
     h('tbody', null, body)));
+}
+
+// ---- Absatz je Monat, Jahre im Vergleich (eine Linie je Jahr) -------------------------------
+const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const YEAR_BASE = 2021;   // feste Farbe je Jahr: 2021 = Reihe 1, 2022 = Reihe 2, ...
+const slotOf = (y) => Math.min(8, Math.max(1, y - YEAR_BASE + 1));
+
+// data: [{year, month, qty}]
+export function yearsChart(host, data) {
+  host.textContent = '';
+  if (!data.length) { host.appendChild(h('p', { class: 'muted' }, 'Keine Absatzdaten.')); return () => {}; }
+  const years = [...new Set(data.map((d) => d.year))].sort().slice(-8);
+  const val = {}; for (const d of data) (val[d.year] ||= {})[d.month] = Number(d.qty);
+  const tip = h('div', { class: 'chart-tip', hidden: true }); const wrap = h('div', { class: 'chart' });
+  host.append(wrap, h('div', { class: 'legend' }, years.map((y) => h('span', null, h('i', { style: `border-color:var(--series-${slotOf(y)})` }), String(y)))));
+  let svg = null;
+
+  function draw() {
+    const W = Math.max(300, wrap.clientWidth || 640); const H = Math.round(Math.max(200, Math.min(280, W * 0.34)));
+    const m = { l: 46, r: 40, t: 14, b: 26 };
+    const max = Math.max(1, ...years.flatMap((y) => Object.values(val[y] || {})));
+    const step = niceStep(max * 1.08 / 4); const yMax = Math.ceil(max * 1.08 / step) * step;
+    const X = (mo) => m.l + ((mo - 1) / 11) * (W - m.l - m.r); const Y = (v) => H - m.b - (v / yMax) * (H - m.t - m.b);
+    svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Absatz je Monat, Jahre ${years[0]} bis ${years[years.length - 1]} im Vergleich` });
+    const grid = s('g', { class: 'grid' }); const axis = s('g', { class: 'axis' });
+    for (let v = 0; v <= yMax + 1e-9; v += step) { if (v > 0) grid.append(s('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v) })); axis.append(s('text', { x: m.l - 8, y: Y(v) + 4, 'text-anchor': 'end' }, num0(v))); }
+    MONTHS.forEach((name, i) => axis.append(s('text', { x: X(i + 1), y: H - 7, 'text-anchor': 'middle' }, name)));
+    svg.append(grid, s('g', { class: 'base' }, s('line', { x1: m.l, x2: W - m.r, y1: Y(0), y2: Y(0) })), axis);
+    for (const y of years) {
+      const pts = Object.keys(val[y]).map(Number).sort((a, b) => a - b); let d = ''; let prev = null;
+      for (const mo of pts) { d += `${prev != null && mo === prev + 1 ? 'L' : 'M'}${X(mo).toFixed(1)} ${Y(val[y][mo]).toFixed(1)}`; prev = mo; }
+      const col = `var(--series-${slotOf(y)})`;
+      svg.append(s('path', { d, fill: 'none', stroke: col, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+      const lm = pts[pts.length - 1];
+      svg.append(s('circle', { cx: X(lm), cy: Y(val[y][lm]), r: 4, fill: col, stroke: 'var(--surface)', 'stroke-width': 2 }));
+      if (y === years[years.length - 1]) svg.append(s('text', { x: X(lm) + 8, y: Y(val[y][lm]) + 4, class: 'endlabel' }, String(y)));
+    }
+    const cross = s('line', { y1: m.t, y2: Y(0), stroke: 'var(--muted)', 'stroke-width': 1, visibility: 'hidden' });
+    const hit = s('rect', { x: m.l - 10, y: 0, width: W - m.l - m.r + 20, height: H, fill: 'transparent' });
+    svg.append(cross, hit);
+    function show(mo, px, py) {
+      cross.setAttribute('x1', X(mo)); cross.setAttribute('x2', X(mo)); cross.setAttribute('visibility', 'visible');
+      const rows = [h('div', { class: 'd' }, MONTHS[mo - 1])];
+      for (const y of [...years].reverse()) if (val[y] && val[y][mo] != null)
+        rows.push(h('div', { class: 'r' }, h('span', { class: 'key', style: `border-top-color:var(--series-${slotOf(y)})` }), h('b', null, num0(val[y][mo])), h('span', { class: 'muted' }, String(y))));
+      tip.textContent = ''; tip.append(...rows); tip.hidden = false;
+      const left = Math.min(Math.max(X(mo) * (wrap.clientWidth / W) + 12, 0), wrap.clientWidth - 170);
+      tip.style.left = `${left}px`; tip.style.top = `${Math.max(0, py * (wrap.clientWidth / W) - 24)}px`;
+    }
+    hit.addEventListener('pointermove', (e) => {
+      const r = svg.getBoundingClientRect(); const x = ((e.clientX - r.left) / r.width) * W; const y = ((e.clientY - r.top) / r.height) * H;
+      show(Math.min(12, Math.max(1, Math.round(1 + ((x - m.l) / (W - m.l - m.r)) * 11))), x, y);
+    });
+    hit.addEventListener('pointerleave', () => { cross.setAttribute('visibility', 'hidden'); tip.hidden = true; });
+    wrap.textContent = ''; wrap.append(svg, tip);
+  }
+  draw();
+  let raf = 0, lastW = wrap.clientWidth;
+  const ro = new ResizeObserver(() => { if (Math.abs(wrap.clientWidth - lastW) < 4) return; lastW = wrap.clientWidth; cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); });
+  ro.observe(wrap);
+  return () => ro.disconnect();
+}
+
+export function yearsTable(data) {
+  const years = [...new Set(data.map((d) => d.year))].sort().slice(-8); const val = {};
+  for (const d of data) (val[d.year] ||= {})[d.month] = Number(d.qty);
+  return h('div', { class: 'table-wrap', style: 'max-height:260px' }, h('table', null,
+    h('thead', null, h('tr', null, h('th', null, 'Monat'), years.map((y) => h('th', { class: 'num' }, String(y))))),
+    h('tbody', null, MONTHS.map((name, i) => h('tr', null, h('td', null, name), years.map((y) => h('td', { class: 'num' }, val[y] && val[y][i + 1] != null ? num0(val[y][i + 1]) : '')))))));
 }

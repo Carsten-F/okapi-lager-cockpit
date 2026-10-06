@@ -1,5 +1,5 @@
 // Eingabeformulare. Jede Funktion gibt zurueck, ob gespeichert wurde.
-import { h, openForm, openDialog, todayBerlin, toast, num0, num2, fmtDate } from './ui.js';
+import { h, openForm, openDialog, todayBerlin, toast, num0, num2, fmtDate, LIFECYCLE } from './ui.js';
 import { rpc } from './api.js';
 
 const skuOptions = (ctx) => [{ value: '', label: '– bitte wählen –' },
@@ -132,23 +132,29 @@ export function openOrderHistory(o) {
 export async function formSettings(ctx, sku) {
   const st = ctx.data.settings.find((r) => r.sku === sku) || {};
   const fc = ctx.data.forecast.find((r) => r.sku === sku);
+  const cur = ctx.data.stock.find((r) => r.sku === sku);
+  const brands = [...new Set(ctx.data.stock.map((r) => r.brand))].sort();
   const saved = await openForm({
     title: 'Artikel-Einstellungen', subtitle: `${nameOf(ctx, sku)} (${sku})`,
     fields: [
+      { name: 'lifecycle', label: 'Status des Artikels', type: 'select', value: st.lifecycle || 'aktiv', full: true,
+        options: Object.entries(LIFECYCLE).map(([value, label]) => ({ value, label })),
+        help: 'Nicht aktive Artikel (z. B. Saisonware oder Archiv) sind in der Übersicht standardmäßig ausgeblendet.' },
+      { name: 'brand', label: 'Marke', type: 'text', value: st.brand || '', datalist: brands,
+        placeholder: cur ? `automatisch: ${cur.brand}` : '', help: 'Leer = automatisch aus dem Produktnamen.' },
+      { name: 'source', label: 'Herkunft', type: 'select', value: st.supply_source || '', options: [
+        { value: '', label: '– nicht festgelegt –' }, { value: 'extern', label: 'Externer Lieferant' }, { value: 'intern', label: 'Intern (ONYX)' }] },
       { name: 'lead', label: 'Lieferzeit (Tage)', type: 'number', value: st.lead_time_days ?? '',
         help: fc ? `Leer = automatisch (aktuell ${fc.lead_time_days} Tage, ${fc.lead_time_source}).` : 'Leer = automatisch aus eingebuchten Bestellungen, sonst 14 Tage.' },
       { name: 'safety', label: 'Sicherheitspuffer (Tage)', type: 'number', value: st.safety_days ?? 7 },
-      { name: 'source', label: 'Herkunft', type: 'select', value: st.supply_source || '', options: [
-        { value: '', label: '– nicht festgelegt –' }, { value: 'extern', label: 'Externer Lieferant' }, { value: 'intern', label: 'Intern (ONYX)' }] },
       { name: 'supplier', label: 'Standard-Lieferant', type: 'text', value: st.supplier || '' },
-      { name: 'active', label: 'In der Prognose berücksichtigen', type: 'checkbox', value: st.active ?? true },
       { name: 'note', label: 'Notiz', type: 'textarea', value: st.note || '' },
     ],
     submit: async (v) => {
       if (v.lead != null && (v.lead < 0 || !Number.isInteger(v.lead))) throw new Error('Lieferzeit: ganze Zahl ≥ 0 oder leer lassen.');
       if (v.safety == null || v.safety < 0 || !Number.isInteger(v.safety)) throw new Error('Puffer: ganze Zahl ≥ 0.');
       await rpc('lager_sku_settings_upsert', { p_sku: sku, p_lead_time_days: v.lead, p_safety_days: v.safety,
-        p_supply_source: v.source, p_supplier: v.supplier, p_active: v.active, p_note: v.note }, ['p_lead_time_days']);
+        p_supply_source: v.source, p_supplier: v.supplier, p_lifecycle: v.lifecycle, p_note: v.note, p_brand: v.brand }, ['p_lead_time_days']);
     },
   });
   if (saved) toast('Einstellungen gespeichert.');

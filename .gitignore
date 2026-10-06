@@ -1,0 +1,6 @@
+# Geschaeftsdaten und Exporte gehoeren nicht ins Repository
+*.xlsx
+sales_import.sql
+sales_daily.csv
+sku_info.csv
+data/

@@ -17,8 +17,8 @@ from (values
   ('OKAPI Mineralfutter Basis',                 '1101310', 4.5, 700, 6),
   ('OKAPI Magnesium Plus',                      '1101320', 0.5, 12, 0),
   ('OKAPI Zink Organisch',                      '1101330', 1.3, 250, 0),
-  ('OKAPI Mash Flocken',                        '1101340', 2.8, 90, 5),
-  ('OKAPI Heucobs',                             '1101350', 6.0, 900, 8)
+  ('KNÄX Mash Flocken',                         '1101340', 2.8, 90, 5),
+  ('biostickies Heucobs',                       '1101350', 6.0, 900, 8)
 ) as p(name, sku, rate, start, off)
 cross join generate_series(0, 59) i
 cross join lateral (select greatest(0, round(p.start - p.rate * i + case when p.sku in ('1101216','1101300') and i >= 40 then 150 else 0 end))::numeric as eff) e
@@ -37,3 +37,9 @@ insert into lager.user_roles values
  ('a0000000-0000-0000-0000-000000000003','lager','Lager Test'),
  ('a0000000-0000-0000-0000-000000000004','viewer','Lesender Test')
  on conflict do nothing;
+
+-- Absatzhistorie fuer das Jahresvergleichs-Diagramm (Hagebutten, 2023 bis heute)
+insert into lager.sales_daily (sku, date, qty_endkunde, qty_therapeut, lines)
+select '1101216', make_date(y, m, 15), 20 + (m * 7 + (y % 100) * 3) % 40, 5, 3
+from generate_series(2023, extract(year from current_date)::int) y cross join generate_series(1, 12) m
+where make_date(y, m, 15) <= current_date;

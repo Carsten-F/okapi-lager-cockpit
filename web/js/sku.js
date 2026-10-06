@@ -1,29 +1,29 @@
 // Detailansicht eines Artikels: Kennzahlen, Verlauf, Bestellungen, Kommentare.
-import { h, openDialog, statusBadge, num0, num1, num2, signed, fmtDate, fmtShort, todayBerlin, toast } from './ui.js';
+import { h, openDialog, statusBadge, num0, num1, num2, signed, fmtDate, fmtShort, todayBerlin, toast, lifecycleLabel } from './ui.js';
 import { rpc } from './api.js';
-import { stockChart, stockTable } from './chart.js';
+import { stockChart, stockTable, yearsChart, yearsTable } from './chart.js';
 import { formNote, formOrder, formSettings } from './forms.js';
 import { ordersTable, isOpen, isArchived } from './orders-ui.js';
 
 export function openSku(ctx, sku) {
   const root = h('div', null);
-  let disposeChart = () => {};
-  const dlg = openDialog({ title: '…', body: root, onClose: () => disposeChart() });
+  let disposeChart = () => {}; let disposeSales = () => {};
+  const dlg = openDialog({ title: '…', body: root, onClose: () => { disposeChart(); disposeSales(); } });
 
   async function fill() {
     const f = ctx.data.forecast.find((r) => r.sku === sku);
     const st = ctx.data.stock.find((r) => r.sku === sku);
     const name = f?.product_name || st?.product_name || sku;
     dlg.querySelector('.dlg-head h2').textContent = name;
-    const [series, notes] = await Promise.all([rpc('lager_stock_series', { p_sku: sku, p_days: 90 }), rpc('lager_notes_list', { p_sku: sku, p_days: 365 })]);
+    const [series, notes, sales] = await Promise.all([rpc('lager_stock_series', { p_sku: sku, p_days: 90 }), rpc('lager_notes_list', { p_sku: sku, p_days: 365 }), rpc('lager_sales_monthly', { p_sku: sku })]);
     const orders = ctx.data.orders.filter((o) => o.sku === sku);
-    const points = series.map((p) => ({ date: p.date, value: Number(p.effective_stock), bestellbar: Number(p.bestellbar), korrektur: p.korrektur == null ? 0 : Number(p.korrektur) }));
+    const points = series.map((p) => ({ date: p.date, value: Number(p.effective_stock), lager: Number(p.stock_qty), korrektur: p.korrektur == null ? 0 : Number(p.korrektur) }));
     const arrivals = orders.filter((o) => isOpen(o) && o.eta).map((o) => ({ date: o.eta, qty: Number(o.qty) - Number(o.received_qty) }));
 
-    const sub = h('div', { class: 'muted small' }, `SKU ${sku}`, f ? ' · ' : '', f ? statusBadge(f.status) : '');
+    const sub = h('div', { class: 'muted small' }, `SKU ${sku}`, f ? ` · ${f.brand}` : '', f && f.lifecycle !== 'aktiv' ? h('span', { class: 'pill', style: 'margin-left:6px' }, lifecycleLabel(f.lifecycle)) : null, f ? ' · ' : '', f ? statusBadge(f.status) : '');
     const facts = h('div', { class: 'facts' },
-      fact('Bestand physisch', st ? num0(st.effective_stock) : '–', st ? `Stand ${fmtDate(st.date)}` : ''),
-      fact('Bestellbar', st ? num0(st.bestellbar) : '–', st && Number(st.stock_offset) ? `${num0(st.stock_offset)} reserviert` : ''),
+      fact('Bestellbar', st ? num0(st.effective_stock) : '–', st ? `Stand ${fmtDate(st.date)}` : ''),
+      fact('Lager (stock_qty)', st ? num0(st.stock_qty) : '–', st && Number(st.stock_offset) ? `Offset ${num0(st.stock_offset)}` : ''),
       fact('Verbrauch / Tag', f?.avg_daily_usage == null ? '–' : num1(f.avg_daily_usage), ''),
       fact('Reichweite', f?.days_of_cover == null ? '–' : `${num0(f.days_of_cover)} Tage`, f?.stockout_date ? `leer ca. ${fmtDate(f.stockout_date)}` : ''),
       fact('Bestellen bis', f?.order_by_date ? fmtDate(f.order_by_date) : '–', f ? `Lieferzeit ${f.lead_time_days} T (${f.lead_time_source}) + ${f.safety_days} T Puffer` : ''),
@@ -41,7 +41,7 @@ export function openSku(ctx, sku) {
       toggle.textContent = showT ? 'Diagramm anzeigen' : 'Tabelle anzeigen';
     } }, 'Tabelle anzeigen');
     const chartSection = h('section', null,
-      h('div', { class: 'section-title' }, h('h3', null, 'Bestandsverlauf (90 Tage, physisch)'), toggle),
+      h('div', { class: 'section-title' }, h('h3', null, 'Verlauf des bestellbaren Bestands (90 Tage)'), toggle),
       chartHost, tableHost,
       h('div', { class: 'chart-note' }, h('span', null, '– – Prognose ohne weitere Lieferungen'), h('span', null, '◆ erwartete Lieferung')));
 
@@ -59,7 +59,18 @@ export function openSku(ctx, sku) {
     const notesSection = h('section', null, h('h3', { style: 'margin-bottom:6px' }, 'Kommentare und Korrekturen'),
       notes.length ? h('ul', { style: 'margin:0;padding-left:18px;display:grid;gap:6px' }, noteItems) : h('p', { class: 'muted' }, 'Keine Einträge.'));
 
-    root.replaceChildren(sub, facts, actions, chartSection, ordersSection, notesSection);
+    // Absatz je Monat, Jahre im Vergleich (aus dem Rechnungsexport)
+    const salesChart = h('div', null); const salesTable = h('div', { hidden: true }, sales.length ? yearsTable(sales) : null);
+    const salesToggle = h('button', { class: 'btn small', type: 'button', onclick: () => {
+      const showT = salesTable.hidden; salesTable.hidden = !showT; salesChart.hidden = showT; salesToggle.textContent = showT ? 'Diagramm anzeigen' : 'Tabelle anzeigen';
+    } }, 'Tabelle anzeigen');
+    const salesSection = h('section', null,
+      h('div', { class: 'section-title' }, h('h3', null, 'Absatz je Monat, Jahre im Vergleich (Menge)'), sales.length ? salesToggle : null),
+      salesChart, salesTable,
+      h('div', { class: 'chart-note' }, h('span', null, 'Quelle: Rechnungsexport, Bestelltag; ohne Mitarbeiter')));
+
+    root.replaceChildren(sub, facts, actions, chartSection, salesSection, ordersSection, notesSection);
+    disposeSales(); disposeSales = yearsChart(salesChart, sales);
     disposeChart(); disposeChart = stockChart(chartHost, { points, usage: f?.avg_daily_usage == null ? 0 : Number(f.avg_daily_usage), arrivals });
   }
   root.style.display = 'grid'; root.style.gap = '16px';

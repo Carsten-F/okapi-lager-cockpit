@@ -100,6 +100,14 @@ export function statusBadge(status) {
   return h('span', { class: 'status', title: st.hint }, icon(st.icon, st.color), st.label);
 }
 
+// ---- Lebenszyklus (aktiv / nicht aktiv Jahreszeit / nicht aktiv Archiv) ---------------
+export const LIFECYCLE = {
+  aktiv: 'Aktiv',
+  inaktiv_saison: 'Nicht aktiv (Jahreszeit)',
+  inaktiv_archiv: 'Nicht aktiv (Archiv)',
+};
+export const lifecycleLabel = (v) => LIFECYCLE[v] || v;
+
 // ---- Toast ---------------------------------------------------------------------------
 export function toast(msg, isErr) {
   const host = document.getElementById('toasts');
@@ -145,11 +153,13 @@ export function openForm({ title, subtitle, fields, submitLabel = 'Speichern', s
         input = h('input', {
           type: f.type === 'number' ? 'text' : (f.type || 'text'), inputmode: f.type === 'number' ? 'decimal' : null,
           name: f.name, required: f.required, placeholder: f.placeholder, value: f.value ?? '',
+          list: f.datalist ? `dl-${f.name}` : null,
         });
       }
       inputs[f.name] = { el: input, def: f };
       grid.appendChild(h('label', { class: f.full || f.type === 'textarea' ? 'full' : '' },
-        f.label + (f.required ? ' *' : ''), input, f.help ? h('span', { class: 'small muted' }, f.help) : null));
+        f.label + (f.required ? ' *' : ''), input, f.help ? h('span', { class: 'small muted' }, f.help) : null,
+        f.datalist ? h('datalist', { id: `dl-${f.name}` }, f.datalist.map((v) => h('option', { value: v }))) : null));
     }
     const okBtn = h('button', { class: 'btn primary', type: 'submit' }, submitLabel);
     const form = h('form', { class: 'dlg-body', style: 'padding:0;overflow:visible' }, grid, err,

@@ -71,16 +71,16 @@ try {
     // Detail
     await page.locator('#view table tbody tr', { hasText: 'Hagebutten' }).click();
     const dlg = page.locator('dialog'); await dlg.waitFor({ state: 'visible' });
-    await dlg.locator('svg[role=img]').waitFor();
-    check('Detail zeigt Diagramm', await dlg.locator('svg[role=img] path').count() >= 3);
-    const box = await dlg.locator('svg[role=img]').boundingBox();
+    await dlg.locator('svg[aria-label^="Verlauf"]').waitFor();
+    check('Detail zeigt Diagramm', await dlg.locator('svg[aria-label^="Verlauf"] path').count() >= 3);
+    const box = await dlg.locator('svg[aria-label^="Verlauf"]').boundingBox();
     await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
-    await dlg.locator('.chart-tip').waitFor({ state: 'visible' });
-    const tipText = await dlg.locator('.chart-tip').textContent();
-    check('Tooltip zeigt Datum und Wert', /\d{2}\.\d{2}\.\d{4}/.test(tipText) && /physisch/.test(tipText), tipText);
+    await dlg.locator('.chart-tip').first().waitFor({ state: 'visible' });
+    const tipText = await dlg.locator('.chart-tip').first().textContent();
+    check('Tooltip zeigt Datum und Wert', /\d{2}\.\d{2}\.\d{4}/.test(tipText) && /bestellbar/.test(tipText), tipText);
     check('Leser hat im Detail keine Schreib-Buttons', (await dlg.getByRole('button', { name: /Bestellung erfassen|Kommentar|Einstellungen/ }).count()) === 0);
     await page.screenshot({ path: `${out}detail-light.png` });
-    await dlg.getByRole('button', { name: 'Tabelle anzeigen' }).click();
+    await dlg.getByRole('button', { name: 'Tabelle anzeigen' }).first().click();
     check('Tabellenansicht erreichbar', await dlg.locator('table').first().isVisible());
     await page.keyboard.press('Escape'); await dlg.waitFor({ state: 'detached' });
 
@@ -98,7 +98,7 @@ try {
     await page.locator('#view table tbody tr').first().waitFor();
     await page.screenshot({ path: `${out}overview-dark.png`, fullPage: true });
     await page.locator('#view table tbody tr', { hasText: 'Hagebutten' }).click();
-    await page.locator('dialog svg[role=img]').waitFor();
+    await page.locator('dialog svg[aria-label^="Verlauf"]').waitFor();
     await page.screenshot({ path: `${out}detail-dark.png` });
     await ctx.close();
     const m = await session('viewer@test', { width: 390, height: 800 });
@@ -269,6 +269,86 @@ try {
     const t2 = await h2.textContent();
     check('Verlauf zeigt automatische Erkennung und Zurücksetzen', /automatisch erkannt/.test(t2) && /Zurückgesetzt/.test(t2) && /Rückbuchung/.test(t2), t2.slice(0, 300));
     await l.ctx.close();
+  }
+
+  // 8. Marken, Artikelstatus, CSV-Export/-Import, Absatzdiagramm
+  {
+    const { ctx, page } = await session('admin@test');
+    await page.locator('#view table tbody tr').first().waitFor();
+    const brands = await page.locator('select[aria-label=Marke] option').allTextContents();
+    check('Markenfilter bietet die erkannten Marken an', ['Alle Marken', 'KNÄX', 'OKAPI', 'biostickies'].every((b) => brands.includes(b)), brands.join(','));
+    await page.locator('select[aria-label=Marke]').selectOption('KNÄX');
+    check('Filter Marke KNÄX zeigt genau den KNÄX-Artikel', (await page.locator('#view table tbody tr').count()) === 1 && /Mash Flocken/.test(await page.locator('#view table tbody tr').first().textContent()));
+    check('Zähler nennt die Auswahl', /1 von 14 Artikeln/.test(await page.locator('#view').textContent()));
+    await page.locator('select[aria-label=Marke]').selectOption('');
+
+    // Artikelstatus: Magnesium Plus auf "Nicht aktiv (Archiv)"
+    await page.getByRole('button', { name: 'Einstellungen', exact: true }).click();
+    await page.locator('#view table tbody tr').first().waitFor();
+    await page.locator('#view table tbody tr', { hasText: 'Magnesium Plus' }).getByRole('button', { name: 'Bearbeiten' }).click();
+    const dlg = page.locator('dialog.narrow'); await dlg.waitFor();
+    const lifeOpts = await dlg.locator('select[name=lifecycle] option').allTextContents();
+    check('Artikelstatus bietet aktiv / nicht aktiv (Jahreszeit) / nicht aktiv (Archiv)', lifeOpts.join('|') === 'Aktiv|Nicht aktiv (Jahreszeit)|Nicht aktiv (Archiv)', lifeOpts.join('|'));
+    await dlg.locator('select[name=lifecycle]').selectOption('inaktiv_archiv');
+    await dlg.getByRole('button', { name: 'Speichern' }).click(); await dlg.waitFor({ state: 'detached' });
+    await page.getByRole('button', { name: 'Übersicht', exact: true }).click();
+    await page.locator('h1', { hasText: 'Übersicht' }).waitFor();
+    await page.locator('#view table tbody tr').first().waitFor();
+    check('nicht aktive Artikel sind in der Übersicht standardmäßig ausgeblendet', (await page.locator('#view table tbody tr').count()) === 13 && (await page.locator('#view table tbody tr', { hasText: 'Magnesium Plus' }).count()) === 0);
+    await page.locator('select[aria-label="Artikelstatus"]').selectOption('inaktiv_archiv');
+    check('Filter „Nicht aktiv (Archiv)“ zeigt den Artikel mit Kennzeichnung', (await page.locator('#view table tbody tr').count()) === 1 && /Nicht aktiv \(Archiv\)/.test(await page.locator('#view table tbody tr').first().textContent()));
+    await page.locator('select[aria-label="Artikelstatus"]').selectOption('alle');
+    check('Filter „Alle“ zeigt wieder 14 Artikel', (await page.locator('#view table tbody tr').count()) === 14);
+    await page.locator('select[aria-label="Artikelstatus"]').selectOption('aktiv');
+    await page.screenshot({ path: `${out}overview-brand-filter.png`, fullPage: false });
+
+    // CSV-Export
+    await page.getByRole('button', { name: 'Einstellungen', exact: true }).click();
+    await page.locator('#view table tbody tr').first().waitFor();
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'CSV exportieren' }).click()]);
+    const csvText = fs.readFileSync(await dl.path(), 'utf8');
+    check('CSV-Export: Kopfzeile und 14 Artikel, Umlaute korrekt', csvText.split('\r\n').filter(Boolean).length === 15 && csvText.includes('Artikelnummer;Produkt;Marke;Lebenszyklus') && csvText.includes('KNÄX Mash Flocken') && csvText.includes('nicht aktiv (Archiv)'), csvText.slice(0, 160));
+
+    // CSV-Import mit Fehlern: Vorschau sperrt die Uebernahme
+    const bad = 'Artikelnummer;Lebenszyklus;Lieferzeit_Tage\r\n1101070;nicht aktiv (Jahreszeit);12\r\nXXX;aktiv;5\r\n1101019;vielleicht;abc\r\n';
+    await page.locator('input[type=file]').setInputFiles({ name: 'bad.csv', mimeType: 'text/csv', buffer: Buffer.from(bad, 'utf8') });
+    const pv = page.locator('dialog'); await pv.waitFor();
+    await pv.getByText('Fehler – es wird nichts übernommen').waitFor();
+    const pvText = await pv.textContent();
+    check('Import-Vorschau nennt Fehler mit Zeilennummer', /Unbekannte Artikelnummer/.test(pvText) && /Lebenszyklus nicht erkannt/.test(pvText), pvText.slice(0, 300));
+    check('Übernehmen ist bei Fehlern gesperrt', await pv.getByRole('button', { name: /übernehmen/ }).isDisabled());
+    await page.screenshot({ path: `${out}settings-import-errors.png` });
+    await pv.getByRole('button', { name: 'Abbrechen' }).click(); await pv.waitFor({ state: 'detached' });
+
+    // gueltiger Import (Windows-1252-Umlaute werden erkannt: Datei als UTF-8 mit BOM)
+    const good = '﻿Artikelnummer;Lebenszyklus;Herkunft;Lieferzeit_Tage;Lieferant\r\n1101070;nicht aktiv (Jahreszeit);intern;12;ONYX\r\n1101019;aktiv;extern;auto;Lieferant K\r\n';
+    await page.locator('input[type=file]').setInputFiles({ name: 'ok.csv', mimeType: 'text/csv', buffer: Buffer.from(good, 'utf8') });
+    await pv.waitFor(); await pv.getByText('Änderungen').first().waitFor();
+    check('gültige Datei: Übernehmen aktiv, 2 Änderungen', !(await pv.getByRole('button', { name: '2 Artikel übernehmen' }).isDisabled()));
+    await pv.getByRole('button', { name: '2 Artikel übernehmen' }).click();
+    await page.locator('#toasts .toast', { hasText: 'Import fertig' }).waitFor();
+    const relax = page.locator('#view table tbody tr', { hasText: 'Relax' });
+    await relax.getByText('12 T').waitFor({ timeout: 5000 }).catch(() => {});
+    const rt = await relax.textContent();
+    check('Import setzt Relax: nicht aktiv (Jahreszeit), intern, 12 Tage', /Nicht aktiv \(Jahreszeit\)/.test(rt) && /Intern/.test(rt) && /12 T/.test(rt), rt);
+    await page.getByRole('button', { name: 'Übersicht', exact: true }).click();
+    await page.locator('h1', { hasText: 'Übersicht' }).waitFor();
+    await page.locator('#view table tbody tr').first().waitFor();
+    check('Relax ist jetzt in der Übersicht ausgeblendet (Saison)', (await page.locator('#view table tbody tr', { hasText: 'Relax' }).count()) === 0);
+
+    // Absatzdiagramm (Jahre im Vergleich)
+    await page.locator('#view table tbody tr', { hasText: 'Hagebutten' }).click();
+    const dd = page.locator('dialog'); await dd.locator('svg[aria-label^="Absatz je Monat"]').waitFor();
+    const legend = await dd.locator('.legend').textContent();
+    check('Absatzdiagramm: eine Linie je Jahr mit Legende', /2023/.test(legend) && /2026/.test(legend) && (await dd.locator('svg[aria-label^="Absatz je Monat"] path[stroke^="var(--series-"]').count()) >= 4, legend);
+    await dd.locator('svg[aria-label^="Absatz je Monat"]').scrollIntoViewIfNeeded();
+    const sb = await dd.locator('svg[aria-label^="Absatz je Monat"]').boundingBox();
+    await page.mouse.move(sb.x + sb.width * 0.45, sb.y + sb.height * 0.5);
+    await dd.locator('.chart-tip').last().waitFor({ state: 'visible' });
+    check('Tooltip nennt alle Jahre des Monats', /2023/.test(await dd.locator('.chart-tip').last().textContent()));
+    await page.screenshot({ path: `${out}detail-sales.png` });
+    await page.keyboard.press('Escape');
+    await ctx.close();
   }
 
   check('keine Konsolenfehler im Browser', consoleErrors.length === 0, consoleErrors.join(' | '));

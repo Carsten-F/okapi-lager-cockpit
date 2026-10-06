@@ -18,8 +18,9 @@ Eingaben im Interface: lager.purchase_orders (+ purchase_order_log), lager.sku_n
 (überschreiben die Kopie nie; Korrekturen werden in der Prognose herausgerechnet)
 ```
 
-Bestandsgrößen: `effective_stock` = physischer Bestand (Grundlage der Prognose),
-`bestellbar` = `stock_qty − stock_offset` (nur Anzeige).
+Bestandsgrößen (Magento): `effective_stock` = **bestellbarer Bestand** (Grundlage der Prognose), `stock_qty` = Lagerwert,
+`stock_offset` = Reservierungen. In der Oberfläche heißen die Spalten „Bestellbar“ und „Lager“. Der physische Bestand kommt
+später aus JTL (siehe `docs/connectors.md`).
 
 ## Sicherheit
 
@@ -71,6 +72,7 @@ Jede Änderung an einer Bestellung wird protokolliert (wer, wann, alt → neu), 
 | `004_empty_stock.sql` | Bestand 0 gilt als kritisch / ausverkauft |
 | `005_order_updates_archive.sql` | Lager darf Bestellungen ändern, Verlauf, automatische Wareneingangs-Erkennung, Archiv |
 | `006_forecast_rounding_fix.sql` | Korrektur: kein Status „bestellt“ und kein Datum „mit Lieferung“ ohne offene Bestellung (Rundungsfehler) |
+| `007_lifecycle_brand_import_sales.sql` | Artikelstatus (aktiv / nicht aktiv Jahreszeit / nicht aktiv Archiv), Marke, CSV-Import der Einstellungen, Absatzhistorie |
 | `002_assign_role.sql.example` | Vorlage: Nutzer eine Rolle geben (kein Teil der Migrationen) |
 | `001_lager_schema_rollback.sql` | macht 001 rückgängig (löscht die Daten in `lager`) |
 | `verify.sql` | Prüfung, nur lesend |
@@ -138,12 +140,41 @@ Kontrolle am Folgetag: `tail -n 3 /var/log/lager-sync.log /var/log/lager-backup.
    freigeschalteten Nutzer.
 3. Ohne Eintrag in `lager.user_roles` sieht ein angemeldeter Nutzer nur „Kein Zugang“.
 
+## Marken und Artikelstatus
+
+- **Marke:** automatisch aus dem Produktnamen (biostickies, KNÄX, OKAPI, Teepferdchen, Happy Belly, sonst „Sonstige“),
+  pro Artikel in den Einstellungen oder per CSV änderbar. Die Übersicht lässt sich nach Marke filtern.
+- **Artikelstatus:** *Aktiv*, *Nicht aktiv (Jahreszeit)* oder *Nicht aktiv (Archiv)*. Die Übersicht zeigt standardmäßig nur
+  aktive Artikel; nicht aktive bleiben in der Datenbank und über den Filter „Artikelstatus“ sichtbar. Die Ampelkacheln
+  zählen nur die gewählte Auswahl.
+
+## Massenpflege per CSV (Einstellungen)
+
+„CSV exportieren“ liefert alle Artikel mit den aktuellen Werten (Semikolon, UTF-8, öffnet in Excel). Nach der Bearbeitung
+„CSV importieren“: Die Datei wird zuerst geprüft (Vorschau mit Zeilennummern und Fehlern); übernommen wird nur, wenn kein
+Fehler besteht (alles oder nichts). Spalten: `Artikelnummer`, `Marke`, `Lebenszyklus` (aktiv / nicht aktiv (Jahreszeit) /
+nicht aktiv (Archiv)), `Herkunft` (extern / intern), `Lieferzeit_Tage` (Zahl oder `auto`), `Puffer_Tage`, `Lieferant`, `Notiz`.
+Leere Felder lassen den bisherigen Wert unverändert. Nur Einkauf und Admin dürfen importieren.
+
+## Absatzhistorie (aus dem Rechnungsexport)
+
+`tools/aggregate_sales.py` verdichtet den Excel-Export (`Orders_Full_Report_*.xlsx`) zu Tagesabsatz je Artikel und
+Käufergruppe. **Kundennamen, E-Mail-Adressen und Rechnungsnummern werden nicht übernommen.** Das Diagramm „Absatz je Monat,
+Jahre im Vergleich“ steht in der Detailansicht jedes Artikels. Einspielen (wiederholbar, eine Transaktion):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\import_sales.ps1 -SqlFile "C:\Pfad\sales_import.sql"
+```
+
+Neue Exporte: `python tools/aggregate_sales.py EXPORT.xlsx AUSGABE --sql [--von JJJJ-MM-TT]` (xlsx braucht `pip install openpyxl`).
+Die Anbindung direkt an Magento und JTL ist in `docs/connectors.md` geplant.
+
 ## Prognoselogik (v1)
 
 - **Tagesverbrauch** = Summe der Bestandsrückgänge zwischen aufeinanderfolgenden Tagen im
   Fenster (Standard 28 Tage) ÷ Fensterlänge. Zugänge zählen nicht als negativer Verbrauch;
   Inventurkorrekturen werden herausgerechnet.
-- **Reichweite** = `effective_stock` ÷ Tagesverbrauch. Bestand 0 gilt als kritisch (ausverkauft).
+- **Reichweite** = bestellbarer Bestand (`effective_stock`) ÷ Tagesverbrauch. Bestand 0 gilt als kritisch (ausverkauft).
 - **Lieferzeit** = Wert aus den Artikel-Einstellungen, sonst Mittel der letzten 5 eingebuchten
   Bestellungen (Bestelldatum bis Warenzugang), sonst 14 Tage. Puffer Standard 7 Tage.
 - **Bestellen bis** = Ausverkaufsdatum − Lieferzeit − Puffer.

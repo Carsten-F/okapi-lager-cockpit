@@ -136,3 +136,65 @@ select count(*) as zeilen_mit_lieferdatum_ohne_bestellung_erwartet_0
   from jsonb_array_elements(okapi_stock.lager_forecast()) f
  where f->>'stockout_date_incl_orders' is not null and (f->>'incoming_qty')::numeric = 0;
 reset role;
+
+-- ========== Migration 007: Marke, Lebenszyklus, CSV-Import, Absatzhistorie ==========
+\echo == 007: Markenerkennung aus dem Produktnamen
+select lager.derive_brand('biostickies Standard Natur Pur-3 kg') b1, lager.derive_brand('Biostickies Clickerli') b2,
+       lager.derive_brand('KNÄX Aurora-1.500g') b3, lager.derive_brand('KNäX Feine Gräser') b4, lager.derive_brand('KNAX Test') b5,
+       lager.derive_brand('OKAPI Zink Plus') b6, lager.derive_brand('Happy Belly - Karton') b7, lager.derive_brand('Teepferdchen Mix') b8,
+       lager.derive_brand('Irgendwas') b9;
+
+\echo == 007: einkauf setzt Lebenszyklus und Marke (B: nicht aktiv Jahreszeit, Marke TestMarke)
+set role authenticated; set request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555';
+select okapi_stock.lager_sku_settings_upsert('B', null, 7, null, null, 'inaktiv_saison', 'Sommerartikel', 'TestMarke');
+select okapi_stock.lager_sku_settings_upsert('B', null, 7, null, null, 'quatsch');
+select f->>'sku' sku, f->>'brand' marke, f->>'lifecycle' lebenszyklus, f->>'bestellbar' bestellbar, f->>'stock_qty' lager
+  from jsonb_array_elements(okapi_stock.lager_forecast()) f where f->>'sku' in ('A','B') order by 1;
+select s->>'sku' sku, s->>'brand' marke, s->>'lifecycle' lebenszyklus from jsonb_array_elements(okapi_stock.lager_stock_latest()) s where s->>'sku' in ('A','B') order by 1;
+reset role;
+
+\echo == 007: CSV-Import, Probelauf mit Fehlern (nichts darf geschrieben werden)
+set role authenticated; set request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555';
+select jsonb_pretty(okapi_stock.lager_sku_settings_import('[
+  {"row":2,"sku":"A","brand":"OKAPI","supply_source":"ONYX","lead_time_days":"21","safety_days":"10","lifecycle":"ja"},
+  {"row":3,"sku":"C","lifecycle":"Nicht aktiv (Archiv)","supplier":"Lieferant Z"},
+  {"row":4,"sku":"NIX","lifecycle":"aktiv"},
+  {"row":5,"sku":"D","lead_time_days":"abc"},
+  {"row":6,"sku":"E","lifecycle":"vielleicht"},
+  {"row":7,"sku":"A","brand":"doppelt"},
+  {"row":8,"sku":"G","supply_source":"Zauberer"},
+  {"row":9,"sku":"","brand":"x"}
+]'::jsonb, true)) as probelauf;
+select s->>'sku' sku, s->>'lifecycle' lz, s->>'supply_source' herkunft from jsonb_array_elements(okapi_stock.lager_sku_settings_list()) s where s->>'sku' in ('A','C') order by 1;
+\echo == 007: Import ausfuehren mit Fehler in einer spaeteren Zeile (erwartet Abbruch, A darf NICHT geaendert sein)
+select okapi_stock.lager_sku_settings_import('[{"row":2,"sku":"A","lead_time_days":"33"},{"row":3,"sku":"NIX"}]'::jsonb, false);
+select s->>'lead_time_days' lead_A_unveraendert from jsonb_array_elements(okapi_stock.lager_sku_settings_list()) s where s->>'sku' = 'A';
+reset role;
+
+\echo == 007: gueltiger Import (A: intern/21/10; C: Archiv; D: Saison, Lieferzeit auto; leere Felder bleiben unveraendert)
+set role authenticated; set request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555';
+select okapi_stock.lager_sku_settings_import('[
+  {"row":2,"sku":"A","brand":"OKAPI","supply_source":"ONYX","lead_time_days":"21","safety_days":"10","lifecycle":"ja"},
+  {"row":3,"sku":"C","lifecycle":"Nicht aktiv (Archiv)","supplier":"Lieferant Z"},
+  {"row":4,"sku":"D","lifecycle":"Jahreszeit","lead_time_days":"auto"}
+]'::jsonb, false)->'summary' as ergebnis;
+select s->>'sku' sku, s->>'brand' marke, s->>'lifecycle' lz, s->>'supply_source' herkunft, s->>'lead_time_days' lieferzeit, s->>'safety_days' puffer, s->>'supplier' lieferant
+  from jsonb_array_elements(okapi_stock.lager_sku_settings_list()) s where s->>'sku' in ('A','C','D') order by 1;
+select okapi_stock.lager_sku_settings_import('[{"row":2,"sku":"A","brand":"OKAPI","lifecycle":"aktiv"}]'::jsonb, false)->'summary' as zweiter_lauf_unveraendert;
+reset role;
+
+\echo == 007: lager darf nicht importieren (erwartet forbidden)
+set role authenticated; set request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444';
+select okapi_stock.lager_sku_settings_import('[{"row":2,"sku":"A","brand":"x"}]'::jsonb, true);
+reset role;
+
+\echo == 007: Absatzhistorie
+insert into lager.sales_daily (sku, date, qty_endkunde, qty_therapeut, qty_haendler, lines) values
+  ('A', '2024-03-05', 10, 2, 0, 3), ('A', '2024-03-20', 5, 0, 3, 2), ('A', '2025-03-11', 7, 0, 0, 1), ('A', '2025-04-01', 4, 1, 0, 2);
+set role authenticated; set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+select m->>'year' jahr, m->>'month' monat, m->>'qty' menge, m->>'qty_b2b' davon_b2b from jsonb_array_elements(okapi_stock.lager_sales_monthly('A')) m;
+reset role;
+\echo == 007: anon und direkte Tabellen weiterhin gesperrt
+set role authenticated; set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+select * from lager.sales_daily;
+reset role;

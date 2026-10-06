@@ -113,19 +113,18 @@ ssh root@server7.centaurus.info "/opt/lager-cockpit/scripts/disable_signup.sh ap
 
 ### Tägliche Synchronisation und Sicherung (Cron, Serverzeit Berlin)
 
-Der Magento-Abruf läuft täglich um 06:15 Uhr. Abgleich um 06:30 Uhr, ein zweites Mal um 07:30 Uhr
+Der Magento-Abruf läuft täglich um 06:15 Uhr. Abgleich um 06:30 Uhr und ein zweites Mal um 07:30 Uhr
 (fängt einen verspäteten Import ab; ein erneuter Lauf ist harmlos), Sicherung danach um 08:00 Uhr.
-Bestehende Einträge bleiben erhalten:
+`install_cron.sh` setzt genau diesen Block, lässt bestehende Einträge unverändert und ist wiederholbar
+(Sicherung der alten Crontab unter `/root/crontab.bak.*`):
 
-```bash
-( crontab -l 2>/dev/null; echo 'CRON_TZ=Europe/Berlin'; \
-  echo '30 6 * * * docker exec supabase-db psql -U postgres -d postgres -X -c "select lager.sync_from_magento()" >> /var/log/lager-sync.log 2>&1'; \
-  echo '30 7 * * * docker exec supabase-db psql -U postgres -d postgres -X -c "select lager.sync_from_magento()" >> /var/log/lager-sync.log 2>&1'; \
-  echo '0 8 * * * /opt/lager-cockpit/scripts/backup_lager.sh >> /var/log/lager-backup.log 2>&1' ) | crontab -
+```powershell
+ssh root@server7.centaurus.info "/opt/lager-cockpit/scripts/install_cron.sh"          # Trockenlauf, ändert nichts
+ssh root@server7.centaurus.info "/opt/lager-cockpit/scripts/install_cron.sh apply"    # schreibt die Crontab
 ```
 
-Erst nach erfolgreichem Testlauf der Sicherung einrichten: `/opt/lager-cockpit/scripts/backup_lager.sh`
-muss mit `OK:` enden.
+Voraussetzung: Der Testlauf `/opt/lager-cockpit/scripts/backup_lager.sh` endet mit `OK:`.
+Kontrolle am Folgetag: `tail -n 3 /var/log/lager-sync.log /var/log/lager-backup.log`.
 
 ## Nutzer und Rollen verwalten
 

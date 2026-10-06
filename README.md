@@ -73,6 +73,7 @@ Jede Änderung an einer Bestellung wird protokolliert (wer, wann, alt → neu), 
 | `005_order_updates_archive.sql` | Lager darf Bestellungen ändern, Verlauf, automatische Wareneingangs-Erkennung, Archiv |
 | `006_forecast_rounding_fix.sql` | Korrektur: kein Status „bestellt“ und kein Datum „mit Lieferung“ ohne offene Bestellung (Rundungsfehler) |
 | `007_lifecycle_brand_import_sales.sql` | Artikelstatus (aktiv / nicht aktiv Jahreszeit / nicht aktiv Archiv), Marke, CSV-Import der Einstellungen, Absatzhistorie |
+| `008_receipts_stockqty_alias.sql` | Wareneingangs-Erkennung aus `stock_qty` (Lagerwert) statt bestellbarem Bestand, Tabelle `sku_alias` (alte → neue Artikelnummer), Spalte `qty_retoure` |
 | `002_assign_role.sql.example` | Vorlage: Nutzer eine Rolle geben (kein Teil der Migrationen) |
 | `001_lager_schema_rollback.sql` | macht 001 rückgängig (löscht die Daten in `lager`) |
 | `verify.sql` | Prüfung, nur lesend |
@@ -165,6 +166,8 @@ Jahre im Vergleich“ steht in der Detailansicht jedes Artikels. Einspielen (wie
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\import_sales.ps1 -SqlFile "C:\Pfad\sales_import.sql"
 ```
+
+Alte Artikelnummern werden beim Verdichten auf die aktuelle Nummer umgeschrieben (Details: `docs/connectors.md`, Ausgabe `sku_alias.csv` und `sku_ohne_nachfolger.csv`).
 
 Neue Exporte: `python tools/aggregate_sales.py EXPORT.xlsx AUSGABE --sql [--von JJJJ-MM-TT]` (xlsx braucht `pip install openpyxl`).
 Die Anbindung direkt an Magento und JTL ist in `docs/connectors.md` geplant.

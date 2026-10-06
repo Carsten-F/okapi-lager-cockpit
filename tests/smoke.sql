@@ -198,3 +198,16 @@ reset role;
 set role authenticated; set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
 select * from lager.sales_daily;
 reset role;
+
+\echo == 008: Wareneingang nur aus stock_qty. H: offene Bestellung 100. Tag +2: Reservierung storniert (bestellbar +40, Lager gleich) -> KEINE Buchung; Tag +3: Lager +100 -> Buchung
+insert into okapi_stock.stock_history(product_name,sku,stock_qty,stock_offset,effective_stock,date)
+select 'Prod H','H',60,0,60,current_date-(10-i) from generate_series(0,10) i;
+select lager.sync_from_magento() as sync_h;
+insert into lager.purchase_orders (sku, qty, ordered_on, expected_delivery) values ('H', 100, current_date - 5, current_date + 3);
+insert into okapi_stock.stock_history(product_name,sku,stock_qty,stock_offset,effective_stock,date) values ('Prod H','H',60,-40,100,current_date+2);
+select lager.sync_from_magento() as sync_reservierung;
+select sku, status, received_qty from lager.purchase_orders where sku = 'H';
+insert into okapi_stock.stock_history(product_name,sku,stock_qty,stock_offset,effective_stock,date) values ('Prod H','H',160,-40,200,current_date+3);
+select lager.sync_from_magento() as sync_wareneingang;
+select sku, status, received_qty, received_source from lager.purchase_orders where sku = 'H';
+select sku, date, inflow, surplus from lager.inflow_log where sku = 'H' order by date;

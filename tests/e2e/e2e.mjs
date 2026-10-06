@@ -53,6 +53,7 @@ try {
     check('Übersicht zeigt 14 Artikel', rows === 14, `Zeilen: ${rows}`);
     const tiles = await page.locator('.tile .tv').allTextContents();
     check('vier Statuskacheln, Summe ≤ 14', tiles.length === 4 && tiles.map(Number).reduce((a, b) => a + b, 0) <= 14, tiles.join(','));
+    check('ohne Bestellungen ist „Bestellt“ = 0 und nirgends steht „mit Lieferung“', tiles[2] === '0' && !(await page.locator('#view table').textContent()).includes('mit Lieferung'), `Kacheln: ${tiles.join(',')}`);
     check('Statuskacheln tragen Symbol und Text', (await page.locator('.tile svg').count()) === 4 && /Kritisch/.test(await page.locator('.tile').first().textContent()));
     check('Rolle wird angezeigt', /Lesen/.test(await page.locator('#whoami').textContent()));
     check('Leser sieht keinen Abgleich-Button', (await page.getByRole('button', { name: 'Daten jetzt abgleichen' }).count()) === 0);

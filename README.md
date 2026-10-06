@@ -70,6 +70,7 @@ Jede Änderung an einer Bestellung wird protokolliert (wer, wann, alt → neu), 
 | `003_order_eta_required.sql` | Bestellung braucht Liefertermin oder Zeitspanne |
 | `004_empty_stock.sql` | Bestand 0 gilt als kritisch / ausverkauft |
 | `005_order_updates_archive.sql` | Lager darf Bestellungen ändern, Verlauf, automatische Wareneingangs-Erkennung, Archiv |
+| `006_forecast_rounding_fix.sql` | Korrektur: kein Status „bestellt“ und kein Datum „mit Lieferung“ ohne offene Bestellung (Rundungsfehler) |
 | `002_assign_role.sql.example` | Vorlage: Nutzer eine Rolle geben (kein Teil der Migrationen) |
 | `001_lager_schema_rollback.sql` | macht 001 rückgängig (löscht die Daten in `lager`) |
 | `verify.sql` | Prüfung, nur lesend |
@@ -206,7 +207,7 @@ Die Dumps enthalten Geschäftsdaten; der Windows-Rechner sollte verschlüsselt s
 
 - **SQL:** `tests/stub.sql` baut die relevanten Teile der Instanz nach, `tests/smoke.sql` prüft
   Rechte, Rollen, Prognose, Sync, Bestelländerungen und automatische Wareneingangs-Erkennung.
-  Gegen ein leeres Postgres ≥ 15: `stub.sql` → Migrationen `001`, `003`, `004`, `005` → `smoke.sql`.
+  Gegen ein leeres Postgres ≥ 15: `stub.sql` → Migrationen `001`, `003`, `004`, `005`, `006` → `smoke.sql`.
 - **Browser (E2E):** `tests/e2e` startet einen Mock der Supabase-API vor einer lokalen Datenbank
   (`stub.sql`, Migrationen, `seed.sql`) und prüft die Oberfläche mit Chromium (Login, Rollen, Filter,
   Diagramm, Bestellungen, Wareneingang, Archiv, automatische Zuordnung, Zurücksetzen, Verlauf,

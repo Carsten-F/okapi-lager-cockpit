@@ -18,7 +18,7 @@ reset role;
 
 \echo == viewer: lesen ok, schreiben verboten (erwartet forbidden)
 set role authenticated; set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
-select jsonb_array_length(okapi_stock.lager_stock_latest()) as skus_erwartet_5;
+select jsonb_array_length(okapi_stock.lager_stock_latest()) as skus_erwartet_6;
 select okapi_stock.lager_note_add('A','kommentar','x');
 select okapi_stock.lager_order_add('A',1,current_date);
 reset role;
@@ -124,3 +124,15 @@ select f->>'incoming_qty' offen_bestellt_D from jsonb_array_elements(okapi_stock
 reset role;
 select lager.sync_from_magento() as dritter_lauf_erwartet_0;
 select status, received_qty from lager.purchase_orders where id = 3;
+
+\echo == 006: Artikel G (Reichweite 3,33 Tage, keine Bestellung): erwartet kritisch, KEIN 'bestellt', KEIN Datum mit Lieferung
+set role authenticated; set request.jwt.claim.sub = '44444444-4444-4444-4444-444444444444';
+select f->>'status' status, f->>'days_of_cover' cover, f->>'stockout_date' leer_am, f->>'stockout_date_incl_orders' leer_mit_lieferung, f->>'incoming_qty' offen
+  from jsonb_array_elements(okapi_stock.lager_forecast()) f where f->>'sku' = 'G';
+select count(*) as zeilen_bestellt_ohne_bestellung_erwartet_0
+  from jsonb_array_elements(okapi_stock.lager_forecast()) f
+ where f->>'status' = 'bestellt' and (f->>'incoming_qty')::numeric = 0;
+select count(*) as zeilen_mit_lieferdatum_ohne_bestellung_erwartet_0
+  from jsonb_array_elements(okapi_stock.lager_forecast()) f
+ where f->>'stockout_date_incl_orders' is not null and (f->>'incoming_qty')::numeric = 0;
+reset role;

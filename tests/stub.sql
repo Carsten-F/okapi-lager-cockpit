@@ -18,3 +18,6 @@ select 'Prod D','D',v,3,v,current_date-(10-i) from (select i, case when i<8 then
 -- E: Bestand 0, kein Verbrauch -> muss als kritisch/ausverkauft erscheinen
 insert into okapi_stock.stock_history(product_name,sku,stock_qty,stock_offset,effective_stock,date)
 select 'Prod E','E',0,0,0,current_date-(10-i) from generate_series(0,10) i;
+-- G: sinkt 3/Tag, Bestand 10 -> Reichweite 3,33 Tage (gebrochen), keine Bestellung -> kritisch, NIE 'bestellt'
+insert into okapi_stock.stock_history(product_name,sku,stock_qty,stock_offset,effective_stock,date)
+select 'Prod G','G',40-3*i,0,40-3*i,current_date-(10-i) from generate_series(0,10) i;

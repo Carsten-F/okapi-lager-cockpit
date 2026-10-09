@@ -3,7 +3,7 @@ import { rpc } from '../api.js';
 import { openSku } from '../sku.js';
 
 // Filter bleiben beim Wechsel zwischen den Bereichen erhalten. Standard: nur aktive Artikel.
-const fs = { status: '', source: '', brand: '', lifecycle: 'aktiv', q: '', sort: null, dir: 1 };
+const fs = { status: '', source: '', brand: '', lifecycle: 'aktiv', q: '', sort: null, dir: 1, limit: 300 };
 const ORDER = ['kritisch', 'bestellen', 'bestellt', 'ok', 'kein_verbrauch'];
 
 export async function renderOverview(ctx, root) {
@@ -98,7 +98,7 @@ export async function renderOverview(ctx, root) {
       onclick: () => { fs.dir = fs.sort === c.k ? -fs.dir : 1; fs.sort = c.k; drawTable(); },
       onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.target.click(); } } },
       c.t, fs.sort === c.k ? (fs.dir === 1 ? ' ▲' : ' ▼') : '')));
-    const body = data.map((r) => {
+    const body = data.slice(0, fs.limit).map((r) => {
       const st = STATUS[r.status] || STATUS.kein_verbrauch;
       const cover = r.days_of_cover == null ? null : Number(r.days_of_cover);
       const pct = cover == null ? 0 : Math.min(1, cover / (r.lead_time_days + r.safety_days + 30));
@@ -120,7 +120,12 @@ export async function renderOverview(ctx, root) {
         h('td', null, Number(r.incoming_qty) > 0 ? [num0(r.incoming_qty), r.next_arrival ? h('div', { class: 'small muted' }, `Eingang ${fmtShort(r.next_arrival)}`) : null,
           Number(r.overdue_orders) > 0 ? h('div', { class: 'status small' }, icon('warn', 'var(--warning)', 13), 'überfällig') : null] : '–'));
     });
-    tableHost.replaceChildren(h('div', { class: 'table-wrap' }, h('table', null, h('thead', null, head), h('tbody', null, body))));
+    const more = data.length > fs.limit
+      ? h('div', { class: 'more-rows' }, `${fs.limit} von ${data.length} Artikeln angezeigt. `,
+          h('button', { class: 'btn', type: 'button', onclick: () => { fs.limit += 300; drawTable(); } }, 'Weitere 300 anzeigen'), ' ',
+          h('button', { class: 'btn', type: 'button', onclick: () => { fs.limit = Infinity; drawTable(); } }, 'Alle anzeigen'))
+      : null;
+    tableHost.replaceChildren(h('div', { class: 'table-wrap' }, h('table', null, h('thead', null, head), h('tbody', null, body))), more);
   }
   function drawAll() { fillBrands(); drawNotice(); drawTiles(); drawTable(); }
   drawAll();
